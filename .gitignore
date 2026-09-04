@@ -1,0 +1,11 @@
+node_modules/
+/build
+/.svelte-kit
+/dist
+/native/build
+/data/root
+/data/*.json
+*.node
+.DS_Store
+Thumbs.db
+*.log
