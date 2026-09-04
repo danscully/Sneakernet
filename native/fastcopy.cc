@@ -289,9 +289,17 @@ Napi::Value Copy(const Napi::CallbackInfo& info) {
 	uint64_t chunkSize = 0;
 	uint64_t reportEveryBytes = 0;
 	bool useClone = true;
-	if (opts.Has("chunkSize")) chunkSize = (uint64_t)opts.Get("chunkSize").As<Napi::Number>().Int64Value();
-	if (opts.Has("reportEveryBytes")) reportEveryBytes = (uint64_t)opts.Get("reportEveryBytes").As<Napi::Number>().Int64Value();
-	if (opts.Has("useClone")) useClone = opts.Get("useClone").As<Napi::Boolean>();
+	if (opts.Has("chunkSize")) {
+		Napi::Value v = opts.Get("chunkSize");
+		if (v.IsNumber()) chunkSize = (uint64_t)v.As<Napi::Number>().Int64Value();
+	}
+	if (opts.Has("reportEveryBytes")) {
+		Napi::Value v = opts.Get("reportEveryBytes");
+		if (v.IsNumber()) reportEveryBytes = (uint64_t)v.As<Napi::Number>().Int64Value();
+	}
+	if (opts.Has("useClone") && opts.Get("useClone").IsBoolean()) {
+		useClone = opts.Get("useClone").As<Napi::Boolean>();
+	}
 
 	uint32_t jobId = g_nextJobId.fetch_add(1);
 	auto state = std::make_shared<CopyState>();
