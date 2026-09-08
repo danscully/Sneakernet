@@ -12,8 +12,18 @@
 	const rate = $derived(app.rateBps(dest.id));
 	const copied = $derived(dest.progress.copiedBytes);
 	const total = $derived(dest.progress.totalBytes);
-	const pct = $derived(total > 0 ? (copied / total) * 100 : 0);
-	const remainingBytes = $derived(Math.max(0, total - copied));
+	const finished = $derived(dest.progress.status === 'done');
+	// A finished run is always 100%: quick runs may not produce intermediate
+	// byte events, deletions carry no bytes, and files skipped as already
+	// up-to-date never add to copiedBytes.
+	const pct = $derived(
+		finished
+			? 100
+			: total > 0
+				? (copied / total) * 100
+				: (dest.progress.filesTotal > 0 && dest.progress.filesDone >= dest.progress.filesTotal ? 100 : 0)
+	);
+	const remainingBytes = $derived(finished ? 0 : Math.max(0, total - copied));
 	const elapsedMs = $derived(
 		dest.startedAt === null
 			? 0

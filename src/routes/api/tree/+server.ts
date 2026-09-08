@@ -38,3 +38,33 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 	return json({ path: rel, exists, dirs });
 };
+
+/**
+ * Create a subdirectory (and any missing parents) under a path inside the
+ * sync root. Used by the directory picker to create new folders.
+ */
+export const POST: RequestHandler = async ({ request }) => {
+	const body = (await request.json()) as { parent?: string; name?: string };
+	const name = (body.name ?? '').trim();
+	if (!name || name.includes('/') || name.includes('\\') || name === '.' || name === '..') {
+		return json({ error: 'invalid directory name' }, { status: 400 });
+	}
+	if (name.length > 255) return json({ error: 'directory name is too long' }, { status: 400 });
+
+	let parentRel: string;
+	try {
+		parentRel = sanitizeRelPath(body.parent ?? '');
+	} catch (err) {
+		return json({ error: err instanceof Error ? err.message : 'invalid path' }, { status: 400 });
+	}
+	const rel = parentRel === '' ? name : `${parentRel}/${name}`;
+	const abs = absPath(rel);
+	try {
+		await fs.mkdir(abs, { recursive: true });
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+		const message = code === 'EEXIST' ? 'a directory with that name already exists' : 'could not create the directory';
+		return json({ error: message }, { status: code === 'EEXIST' ? 409 : 500 });
+	}
+	return json({ rel }, { status: 201 });
+};

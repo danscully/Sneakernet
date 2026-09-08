@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { Folder, ChevronRight, Home } from '@lucide/svelte';
+	import { Folder, ChevronRight, Home, FolderPlus } from '@lucide/svelte';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Badge } from '$lib/components/ui/badge';
 	import { cn } from '$lib/utils';
@@ -21,6 +22,9 @@
 	let exists = $state(true);
 	let loading = $state(false);
 	let selected = $state<string | null>(null);
+	let newFolderName = $state('');
+	let creating = $state(false);
+	let createError = $state<string | null>(null);
 
 	async function load(rel: string): Promise<void> {
 		loading = true;
@@ -40,12 +44,39 @@
 		}
 	}
 
+	async function createFolder(): Promise<void> {
+		const name = newFolderName.trim();
+		if (!name || creating) return;
+		creating = true;
+		createError = null;
+		try {
+			const res = await fetch('/api/tree', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ parent: path, name })
+			});
+			const data = (await res.json()) as { rel?: string; error?: string };
+
+			if (!res.ok) {
+				createError = data.error ?? 'could not create the directory';
+				return;
+			}
+			newFolderName = '';
+			// Navigate into the new directory so Choose picks it.
+			if (data.rel) await load(data.rel);
+		} finally {
+			creating = false;
+		}
+	}
+
 	$effect(() => {
 		if (open) void load('');
 	});
 
 	const segments = $derived(
-		path === '' ? [] : path.split('/').map((s, i, arr) => ({ name: s, rel: arr.slice(0, i + 1).join('/') }))
+		path === ''
+			? []
+			: path.split('/').map((s, i, arr) => ({ name: s, rel: arr.slice(0, i + 1).join('/') }))
 	);
 </script>
 
@@ -54,7 +85,7 @@
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 			<Dialog.Description class="text-xs">
-				Pick a directory under the sync root. Paths are relative to the root.
+				Pick a directory under the sync root, or create a new subdirectory. Paths are relative to the root.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -73,6 +104,31 @@
 				<Badge variant="destructive" class="ml-auto">not created yet</Badge>
 			{/if}
 		</div>
+
+		<div class="flex items-center gap-1.5">
+			<Input
+				class="h-7 flex-1 text-xs"
+				placeholder="new subdirectory name"
+				bind:value={newFolderName}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') void createFolder();
+				}}
+			/>
+			<Button
+				variant="outline"
+				size="sm"
+				class="h-7"
+				disabled={!newFolderName.trim() || creating}
+				onclick={() => void createFolder()}
+				title="Create this subdirectory in the current folder"
+			>
+				<FolderPlus class="size-3.5" />
+				Create
+			</Button>
+		</div>
+		{#if createError}
+			<p class="text-[11px] text-destructive">{createError}</p>
+		{/if}
 
 		<ScrollArea class="h-64 rounded-md border p-1">
 			{#if loading}

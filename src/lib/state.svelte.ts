@@ -96,11 +96,22 @@ export class AppState {
 	/** Ticker so elapsed/remaining displays stay live while running. */
 	now = $state(Date.now());
 
+	/** Absolute path of the sync root (from the server deployment config). */
+	rootPath: string | null = $state(null);
+
 	#es: EventSource | null = null;
 	#savedDraft = '';
 
 	get activeSet(): SyncSet | null {
 		return this.sets.find((s) => s.id === this.activeSetId) ?? null;
+	}
+
+	/** Fetch the absolute sync root path (read-only info for the UI). */
+	async loadRoot(): Promise<void> {
+		const res = await fetch('/api/config');
+		if (!res.ok) return;
+		const data = (await res.json()) as { root: string };
+		this.rootPath = data.root;
 	}
 
 	get dirty(): boolean {

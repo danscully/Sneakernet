@@ -77,7 +77,7 @@
 	}
 </script>
 
-<div class="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3 text-xs">
+<div class="flex flex-col gap-3 text-xs">
 	{#if draft === null}
 		<div class="flex flex-col gap-2">
 			<p class="text-muted-foreground">No sync set selected. Create one to get started.</p>
