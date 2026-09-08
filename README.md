@@ -93,6 +93,14 @@ npm test           # rebuild native addon + run the vitest suite
 npm run check      # svelte-check (types)
 ```
 
+### Notes on the vendored UI kit
+
+The shadcn-svelte components in `src/lib/components/ui/` are vendored from the
+official registry (the `shadcn-svelte` CLI `add` command). A few of them target
+a newer bits-ui major than what is installed here; their state variants were
+adjusted to the `data-state` attributes that bits-ui v2 sets at runtime
+(checkbox, switch, tabs, select, dialog, scroll-area).
+
 ### Architecture
 
 ```
