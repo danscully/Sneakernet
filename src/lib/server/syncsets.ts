@@ -98,10 +98,10 @@ export function validateSyncSet(input: unknown, existingIds: Set<string>): SyncS
 		dateDeltaSeconds,
 		syncDeletions,
 		includeFilters: normalizeFilterList(
-			Array.isArray(raw['includeFilters']) ? (raw['includeFilters'] as unknown[]) : []
+			Array.isArray(raw['includeFilters']) ? (raw['includeFilters'] as string[]) : []
 		),
 		excludeFilters: normalizeFilterList(
-			Array.isArray(raw['excludeFilters']) ? (raw['excludeFilters'] as unknown[]) : []
+			Array.isArray(raw['excludeFilters']) ? (raw['excludeFilters'] as string[]) : []
 		),
 		errorPolicy: policy as SyncSet['errorPolicy']
 	};

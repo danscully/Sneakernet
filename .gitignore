@@ -3,8 +3,9 @@ node_modules/
 /.svelte-kit
 /dist
 /native/build
-/data/root
-/data/*.json
+/data/
+.npm-cache/
+config.json
 *.node
 .DS_Store
 Thumbs.db

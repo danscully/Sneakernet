@@ -32,7 +32,9 @@ describe('sync set validation', () => {
 		expect(() =>
 			validateSyncSet(makeSet({ destinations: [{ id: 'd', name: 'A', path: 'dst', group: 11 }] }), new Set())
 		).toThrow(/group/);
-		expect(() => validateSyncSet(makeSet({ errorPolicy: 'explode' }), new Set())).toThrow(/errorPolicy/);
+		expect(() =>
+			validateSyncSet(makeSet({ errorPolicy: 'explode' as never }), new Set())
+		).toThrow(/errorPolicy/);
 	});
 });
 
