@@ -10,3 +10,9 @@ config.json
 .DS_Store
 Thumbs.db
 *.log
+
+# Desktop (Tauri) build artifacts
+desktop/src-tauri/target/
+desktop/src-tauri/resources/
+desktop/src-tauri/gen/
+desktop/.node-cache/

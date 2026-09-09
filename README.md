@@ -138,6 +138,66 @@ Example `config.json`:
 5. Every run is logged — the **Logs** tab shows the current session's runs
    (newest first) or all recent runs, with the full text of each log.
 
+## Desktop app (Tauri) — distribution
+
+The app ships as a native desktop application (Option A of
+[DeployProposal.md](DeployProposal.md)):
+
+- a Tauri shell (`desktop/src-tauri`) launches the bundled **Node runtime**
+  with the adapter-node **server** as a hidden background process, then opens
+  the UI in a native window;
+- per-user data lives in the OS application-support directory
+  (`~/Library/Application Support/com.metfilesync.desktop` on macOS,
+  `%APPDATA%\com.metfilesync.desktop` on Windows): `sync-root/` is the sync
+  root, `app-data/` holds sync sets and logs;
+- closing the window hides to the tray (syncs keep running); **Quit** in the
+  tray menu stops the server and exits — and if the shell is ever killed
+  abruptly, a stdin watchdog makes the server exit on its own;
+- only one instance can run (a second launch focuses the existing window).
+
+### Building locally (macOS)
+
+Prerequisites: Xcode Command Line Tools, the Rust toolchain
+(`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`),
+and `npm i` in the project root. Then:
+
+```sh
+npm run desktop:build
+```
+
+This builds the web app + native addon, assembles `desktop/src-tauri/resources/`
+(server bundle, `metfilesync_native.node`, and a standalone Node runtime —
+downloaded from nodejs.org and cached in `desktop/.node-cache/`; set
+`MFS_NODE_RUNTIME_DIR` to use a local Node binary instead), and runs
+`tauri build`. The outputs are:
+
+- `desktop/src-tauri/target/release/bundle/macos/MetFileSync.app`
+- `desktop/src-tauri/target/release/bundle/dmg/MetFileSync_<version>_aarch64.dmg`
+
+To cross-prepare Windows resources on a Mac (e.g. for inspection):
+`node scripts/prepare-desktop.mjs --platform win32 --arch x64`.
+
+### Building for Windows
+
+Native addons cannot be cross-compiled, so build on Windows with
+**Visual Studio Build Tools 2022** (C++ workload), Python 3 and the Rust
+toolchain installed:
+
+```powershell
+npm ci
+npm run desktop:build
+# -> desktop/src-tauri/target/release/bundle/{msi,nsis}/
+```
+
+### CI builds (macOS + Windows)
+
+[.github/workflows/desktop-build.yml](.github/workflows/desktop-build.yml)
+builds signed-ready artifacts on `macos-latest` (arm64 .dmg) and
+`windows-latest` (MSI + NSIS .exe) on every `v*` tag push, uploading a draft
+GitHub Release with the installers. Add `APPLE_CERTIFICATE`/`APPLE_ID`
+and a Windows code-signing certificate as repository secrets to enable
+signing + notarization.
+
 ## Development
 
 ```sh

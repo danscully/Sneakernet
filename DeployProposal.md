@@ -19,7 +19,13 @@ terminal, no Node.js, no manual native-module compilation.
 
 ## Recommendation (in order of preference)
 
-### Option A — Desktop app shell (recommended)
+### Option A — Desktop app shell (recommended) — IMPLEMENTED
+
+**Status:** the Tauri shell is implemented in `desktop/` and builds locally
+(`npm run desktop:build` on macOS; see the README "Desktop app (Tauri)"
+section). Remaining for a production launch: code signing + notarization
+secrets in CI, and the optional first-run wizard (the sync root currently
+defaults to `<app-data>/sync-root`, configurable via `config.json`).
 
 Package the existing Node server + the UI as a desktop application using
 **Tauri** (preferred) or **Electron**:

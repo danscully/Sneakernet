@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" style="color-scheme: dark">
+	<head>
+		<meta charset="utf-8" />
+		<title>MetFileSync</title>
+		<style>
+			body {
+				margin: 0;
+				height: 100vh;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 18px;
+				background: #0a0a0b;
+				color: #e4e4e7;
+				font: 13px/1.5 system-ui, -apple-system, sans-serif;
+			}
+			h1 {
+				font-size: 18px;
+				font-weight: 600;
+				margin: 0;
+				letter-spacing: 0.01em;
+			}
+			.spinner {
+				width: 26px;
+				height: 26px;
+				border: 2px solid #27272a;
+				border-top-color: #71717a;
+				border-radius: 50%;
+				animation: spin 0.9s linear infinite;
+			}
+			p {
+				color: #a1a1aa;
+				margin: 0;
+			}
+			@keyframes spin {
+				to {
+					transform: rotate(360deg);
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="spinner"></div>
+		<h1>MetFileSync</h1>
+		<p>Starting the sync server…</p>
+		<script>
+			// The Rust shell sets window.__MFS_BOOT_URL once the local server is
+			// accepting connections; then we swap in the real app.
+			setInterval(() => {
+				if (window.__MFS_BOOT_URL) window.location.replace(window.__MFS_BOOT_URL);
+			}, 200);
+		</script>
+	</body>
+</html>
