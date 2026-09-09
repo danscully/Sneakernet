@@ -2,13 +2,17 @@
 //
 // The shell launches the bundled Node runtime with the adapter-node server
 // (resources/server) as a hidden child process, waits until it accepts
-// connections, then navigates the main webview to the local server URL.
+// connections, then navigates the main webview to the local server URL
+// exactly once.
 // Per-user data lives under the OS application-support directory:
 //   <app-data>/sync-root     - default sync root (METFILESYNC_ROOT)
 //   <app-data>/app-data      - sync sets / logs (METFILESYNC_DATA)
 //   <app-data>/desktop-settings.json - this app's settings
-// Closing the window hides to the tray (syncs keep running); Quit from the
-// tray stops the server and exits.
+// Closing the window quits the whole app: a native confirmation dialog
+// warns first (quitting stops the embedded server and any in-progress
+// syncs). Cmd+Q and the Dock's Quit confirm the same way; the tray's Quit
+// (whose label states the consequence) and the dialog's own Quit exit
+// immediately. The tray offers Open/Quit while the app runs.
 //
 // LAN sharing (opt-in, off by default): configured in the in-app Desktop
 // Settings dialog (loopback-only endpoints in the web app). When enabled,
@@ -31,10 +35,11 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     tray::TrayIconBuilder,
     AppHandle, Manager, RunEvent,
 };
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 /// Shared shell state.
 struct AppState {
@@ -268,23 +273,74 @@ fn spawn_server(handle: &AppHandle) {
     *state.child.lock().unwrap() = Some(child);
     *state.port.lock().unwrap() = port;
 
-    // Navigate the window to the app once the server is up. Repeated evals
-    // guard against races with the page's load.
+    // Navigate the window to the app once the server is up. The first eval
+    // performs the navigation (or, after a same-port restart, a deliberate
+    // one-time reload); every later eval is idempotent: it only navigates
+    // when the page is not already served by this server instance, so the
+    // retries (which only guard against the eval being lost during the
+    // placeholder page's load) never cause additional reloads.
+    //
+    // The comparison uses the origin, not the full URL: with LAN sharing
+    // on, the boot URL carries ?token=..., and the server redirects to a
+    // clean URL right after - a full-URL check would re-navigate forever.
     let window = handle
         .get_webview_window("main")
         .expect("main window is declared in tauri.conf.json");
     let url = boot_url(&settings, port);
+    let origin = format!("http://127.0.0.1:{port}");
     let url_for_nav = url.clone();
+    let origin_check = origin.clone();
     thread::spawn(move || {
         if !wait_for_server(port, Duration::from_secs(60)) {
             eprintln!("[shell] server did not become ready within 60s");
             return;
         }
-        for _ in 0..10 {
-            let _ = window.eval(&format!(
-                "window.location.replace({url_for_nav:?});"
-            ));
+        for i in 0..10 {
+            let script = if i == 0 {
+                format!("window.location.replace({url_for_nav:?});")
+            } else {
+                format!(
+                    "if (window.location.origin !== {origin_check:?}) \
+                     window.location.replace({url_for_nav:?});"
+                )
+            };
+            let _ = window.eval(&script);
             thread::sleep(Duration::from_millis(300));
+        }
+    });
+}
+
+// ------------------------------------------------------------ quit confirm --
+
+/// Ask the user to confirm quitting (a native dialog attached to the main
+/// window). Any in-progress sync stops with the app, so every user-facing
+/// quit path except the explicit tray item confirms first. The tray's Quit
+/// is exempt because its label already states the consequence.
+fn confirm_quit(handle: &AppHandle) {
+    let quit_handle = handle.clone();
+    let builder = handle
+        .dialog()
+        .message(
+            "Quitting stops the sync engine — any in-progress syncs will stop. \
+             Quit anyway?",
+        )
+        .title("Quit MetFileSync?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            String::from("Quit"),
+            String::from("Cancel"),
+        ));
+    // Attach to the window when it exists so the dialog is clearly tied to
+    // the app (on macOS it appears as a sheet over the window).
+    let builder = match handle.get_webview_window("main") {
+        Some(window) => builder.parent(&window),
+        None => builder,
+    };
+    builder.show(move |confirmed| {
+        if confirmed {
+            // ExitRequested carries a code, so the run handler lets this
+            // exit through (no second dialog).
+            quit_handle.exit(0);
         }
     });
 }
@@ -326,6 +382,7 @@ fn main() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -371,6 +428,47 @@ fn main() {
                 })
                 .build(&handle)?;
 
+            // macOS menu bar: a minimal, native-feeling menu whose Quit
+            // item (Cmd+Q) routes through the same confirmation dialog as
+            // closing the window. Without it the system's Cmd+Q terminates
+            // the app immediately (macOS quit events bypass Tauri's exit
+            // hooks; the stdin watchdog would still clean up the server,
+            // but the user would get no warning). The Edit submenu keeps
+            // the standard webview text shortcuts working. Windows is left
+            // untouched (a menu there would attach to the window).
+            #[cfg(target_os = "macos")]
+            {
+                let quit = MenuItem::with_id(
+                    &handle,
+                    "app-quit",
+                    "Quit MetFileSync",
+                    true,
+                    Some("CmdOrCtrl+Q"),
+                )?;
+                let app_menu = SubmenuBuilder::new(&handle, "MetFileSync")
+                    .item(&quit)
+                    .build()?;
+                let edit_menu = SubmenuBuilder::new(&handle, "Edit")
+                    .item(&PredefinedMenuItem::undo(&handle, None)?)
+                    .item(&PredefinedMenuItem::redo(&handle, None)?)
+                    .item(&PredefinedMenuItem::separator(&handle)?)
+                    .item(&PredefinedMenuItem::cut(&handle, None)?)
+                    .item(&PredefinedMenuItem::copy(&handle, None)?)
+                    .item(&PredefinedMenuItem::paste(&handle, None)?)
+                    .item(&PredefinedMenuItem::select_all(&handle, None)?)
+                    .build()?;
+                let menu = MenuBuilder::new(&handle)
+                    .item(&app_menu)
+                    .item(&edit_menu)
+                    .build()?;
+                handle.set_menu(menu)?;
+                handle.on_menu_event(|app, event| {
+                    if event.id.as_ref() == "app-quit" {
+                        confirm_quit(app);
+                    }
+                });
+            }
+
             spawn_server(&handle);
             watch_settings(handle);
 
@@ -382,26 +480,35 @@ fn main() {
             port: Mutex::new(0),
         })
         .on_window_event(|window, event| {
-            // Closing the window hides to the tray; syncs keep running until
-            // the user quits from the tray.
+            // Closing the window quits the whole app. Confirm first with a
+            // native dialog: quitting stops the embedded server, and with it
+            // any sync that is still running.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
                 api.prevent_close();
+                confirm_quit(window.app_handle());
             }
         })
         .build(tauri::generate_context!())
         .expect("error while building MetFileSync")
         .run(|app, event| {
-            // Stop the server on every exit path (system quit, tray quit,
-            // abrupt teardown); the stdin watchdog covers anything else.
-            if matches!(
-                event,
-                RunEvent::ExitRequested { .. } | RunEvent::Exit
-            ) {
-                if let Some(mut child) = app.state::<AppState>().child.lock().unwrap().take() {
-                    let _ = child.kill();
-                    let _ = child.wait();
+            match event {
+                // User/system quit without a code (Cmd+Q, the Dock's Quit,
+                // logoff): confirm first, exactly like closing the window.
+                // Deliberate exits (the dialog's Quit, the tray's Quit) carry
+                // a code and fall through to the shutdown path below.
+                RunEvent::ExitRequested { code: None, api, .. } => {
+                    api.prevent_exit();
+                    confirm_quit(app);
                 }
+                // Stop the server on every exit path; the stdin watchdog
+                // covers anything the shell misses.
+                RunEvent::ExitRequested { .. } | RunEvent::Exit => {
+                    if let Some(mut child) = app.state::<AppState>().child.lock().unwrap().take() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                }
+                _ => {}
             }
         });
 }

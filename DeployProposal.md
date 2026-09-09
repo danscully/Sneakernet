@@ -55,8 +55,9 @@ Package the existing Node server + the UI as a desktop application using
 - **Auto-update:** built-in updater (Tauri updater / electron-updater /
   Squirrel) so users never re-download installs. Updates ship new server
   code and new prebuilt addons together — they always match.
-- **Menu-bar/tray presence** with "MetFileSync is running" status and a
-  quit item; start on login (opt-in checkbox in settings).
+- **Tray presence** while the app runs (open/quit items); closing the window
+  quits the whole app behind a native confirmation that warns about
+  in-progress syncs. Start on login (opt-in checkbox in settings).
 
 **Tauri vs Electron tradeoff:** Tauri produces ~10 MB installers and uses
 the OS webview, but needs a Node sidecar process (Tauri's shell is Rust;

@@ -16,3 +16,6 @@ desktop/src-tauri/target/
 desktop/src-tauri/resources/
 desktop/src-tauri/gen/
 desktop/.node-cache/
+
+# Desktop bundling staging dir (pruned production node_modules)
+desktop/.node-modules-stage/

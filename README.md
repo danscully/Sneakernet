@@ -150,10 +150,15 @@ The app ships as a native desktop application (Option A of
   (`~/Library/Application Support/com.metfilesync.desktop` on macOS,
   `%APPDATA%\com.metfilesync.desktop` on Windows): `sync-root/` is the sync
   root, `app-data/` holds sync sets and logs;
-- closing the window hides to the tray (syncs keep running); **Quit** in the
-  tray menu stops the server and exits — and if the shell is ever killed
-  abruptly, a stdin watchdog makes the server exit on its own;
-- only one instance can run (a second launch focuses the existing window).
+- closing the window **quits the whole app**: a native confirmation dialog
+  warns first that quitting stops the sync engine and any in-progress syncs
+  (**Quit** / **Cancel**). Cmd+Q and the Dock's Quit confirm the same way;
+  the tray's Quit item (whose label states the consequence) exits
+  immediately — and if the shell is ever killed abruptly, a stdin watchdog
+  makes the server exit on its own;
+- only one instance can run (a second launch focuses the existing window);
+- the webview navigates to the embedded server exactly once on startup and
+  once per settings change (no reload loops).
 
 ### Building locally (macOS)
 
@@ -166,13 +171,21 @@ npm run desktop:build
 ```
 
 This builds the web app + native addon, assembles `desktop/src-tauri/resources/`
-(server bundle, `metfilesync_native.node`, and a standalone Node runtime —
+(server bundle **with a pruned production `node_modules/`** — the SSR bundle
+keeps `package.json` `dependencies` external, so they ship inside the app —
+plus `metfilesync_native.node`, and a standalone Node runtime —
 downloaded from nodejs.org and cached in `desktop/.node-cache/`; set
 `MFS_NODE_RUNTIME_DIR` to use a local Node binary instead), and runs
 `tauri build`. The outputs are:
 
 - `desktop/src-tauri/target/release/bundle/macos/MetFileSync.app`
 - `desktop/src-tauri/target/release/bundle/dmg/MetFileSync_<version>_aarch64.dmg`
+
+**Run the app from `/Applications`** (copy the built `.app` there), not from
+the project directory: macOS TCC restricts apps that execute from inside
+`~/Documents`, so a build launched from there pops a one-time "would like to
+access files in your Documents folder" prompt per rebuilt binary (and the
+server would otherwise resolve packages from the project's `node_modules`).
 
 To cross-prepare Windows resources on a Mac (e.g. for inspection):
 `node scripts/prepare-desktop.mjs --platform win32 --arch x64`.

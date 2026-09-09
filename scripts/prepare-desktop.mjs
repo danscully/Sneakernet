@@ -3,7 +3,10 @@
  * DeployProposal.md).
  *
  * Produces desktop/src-tauri/resources/:
- *   server/    the adapter-node production server (from npm run build)
+ *   server/    the adapter-node production server (from npm run build),
+ *              including a pruned production node_modules/ - the SSR bundle
+ *              keeps package.json `dependencies` (incl. svelte and
+ *              @sveltejs/kit) external, so they must ship inside the app
  *   native/    the platform's metfilesync_native.node addon
  *   runtime/   a standalone Node runtime (node / node.exe)
  *
@@ -97,6 +100,45 @@ fs.mkdirSync(resourcesDir, { recursive: true });
 
 console.log('  server/   <- build/');
 copyDir(serverBuild, path.join(resourcesDir, 'server'));
+
+// Production node_modules: the server bundle imports packages from
+// `dependencies` (SvelteKit externalizes them for adapter-node), so the app
+// must carry them. Install the exact production tree (no build tools, no
+// dev-only packages) into the bundled server dir via a throwaway staging
+// copy of the project manifest. Running from within the project keeps the
+// project's .npmrc (registry cache) in effect.
+const stageDir = path.join(root, 'desktop', '.node-modules-stage');
+fs.rmSync(stageDir, { recursive: true, force: true });
+fs.mkdirSync(stageDir, { recursive: true });
+fs.copyFileSync(path.join(root, 'package.json'), path.join(stageDir, 'package.json'));
+fs.copyFileSync(path.join(root, 'package-lock.json'), path.join(stageDir, 'package-lock.json'));
+console.log('  server/node_modules/  <- npm ci --omit=dev (production tree)');
+execFileSync(
+	process.platform === 'win32' ? 'npm.cmd' : 'npm',
+	[
+		'ci',
+		// Production packages only. --legacy-peer-deps skips npm's automatic
+		// peer installation: @sveltejs/kit (a runtime dep) declares build-time
+		// peers (vite, typescript, ...), which the server bundle never imports
+		// but would add ~75MB to the app. The peers the runtime really needs
+		// (svelte, @internationalized/date) are direct dependencies and install
+		// regardless.
+		'--omit=dev',
+		'--legacy-peer-deps',
+		'--ignore-scripts',
+		'--no-audit',
+		'--no-fund',
+		'--no-progress'
+	],
+	{ cwd: stageDir, stdio: 'inherit' }
+);
+fs.rmSync(path.join(stageDir, 'node_modules', '.package-lock.json'), { force: true });
+// npm's .bin shims are broken symlink farms (their targets are not part of
+// the pruned tree) and would break the Tauri resource packer; the server
+// never executes them.
+fs.rmSync(path.join(stageDir, 'node_modules', '.bin'), { recursive: true, force: true });
+copyDir(path.join(stageDir, 'node_modules'), path.join(resourcesDir, 'server', 'node_modules'));
+fs.rmSync(stageDir, { recursive: true, force: true });
 
 // Watchdog wrapper: keeps the server tied to the shell's lifetime even if the
 // shell is killed abruptly (the stdin pipe closes -> the server exits).
