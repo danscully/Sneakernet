@@ -287,7 +287,7 @@
 							Loading…
 						</div>
 					{:else}
-						<ScrollArea class="h-full">
+						<ScrollArea type="always" class="h-full">
 							<pre class="whitespace-pre-wrap p-3 font-mono text-[11px] leading-relaxed">{app.logText}</pre>
 						</ScrollArea>
 					{/if}
@@ -299,8 +299,8 @@
 
 <!-- Sync set settings modal -->
 <Dialog.Root bind:open={app.settingsOpen}>
-	<Dialog.Content class="max-h-[90vh] max-w-3xl overflow-y-auto">
-		<Dialog.Header>
+	<Dialog.Content class="flex max-h-[90vh] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
+		<Dialog.Header class="shrink-0 border-b p-4 pb-3">
 			<Dialog.Title>
 				Sync Set Settings{#if app.draft} — {app.draft.name}{/if}
 			</Dialog.Title>
@@ -308,23 +308,29 @@
 				All directories live under the root configured on the server.
 			</Dialog.Description>
 		</Dialog.Header>
-		<div class="flex flex-col gap-4 text-xs">
-			<div class="grid gap-1.5">
-				<Label for="root-path">Root directory (server configuration, read-only)</Label>
-				<Input
-					id="root-path"
-					class="h-7 cursor-not-allowed font-mono text-xs opacity-90"
-					value={app.rootPath ?? '…'}
-					disabled
-					aria-readonly="true"
-				/>
-				<p class="text-[10px] text-muted-foreground">
-					Configured via config.json or the METFILESYNC_ROOT environment variable on the server.
-				</p>
+		<!-- Settings body: bounded scroll region with a persistent scrollbar;
+			the header above and the footer below stay fixed. -->
+		<ScrollArea type="always" class="min-h-0 flex-1">
+			<div class="flex flex-col gap-4 p-4 text-xs">
+				<div class="grid gap-1.5">
+					<Label for="root-path">Root directory (server configuration, read-only)</Label>
+					<Input
+						id="root-path"
+						class="h-7 cursor-not-allowed font-mono text-xs opacity-90"
+						value={app.rootPath ?? '…'}
+						disabled
+						aria-readonly="true"
+					/>
+					<p class="text-[10px] text-muted-foreground">
+						Configured via config.json or the METFILESYNC_ROOT environment variable on the server.
+					</p>
+				</div>
+				<SyncSetEditor />
 			</div>
-			<SyncSetEditor />
-		</div>
-		<Dialog.Footer class="gap-2 sm:justify-end">
+		</ScrollArea>
+		<Dialog.Footer
+			class="m-0 shrink-0 flex-row gap-2 border-t bg-muted/30 p-3 sm:justify-end"
+		>
 			<Button
 				variant="outline"
 				size="sm"

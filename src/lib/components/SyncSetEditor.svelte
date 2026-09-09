@@ -78,210 +78,219 @@
 			</Button>
 		</div>
 	{:else}
-		<!-- Name -->
-		<div class="grid gap-1.5">
-			<Label for="set-name">Sync set name</Label>
-			<Input id="set-name" class="h-7 text-xs" bind:value={draft.name} />
-		</div>
+		<div class="grid grid-cols-2 items-start gap-x-5">
+			<!-- Left: identity + destinations -->
+			<div class="flex flex-col gap-3">
+				<!-- Name -->
+				<div class="grid gap-1.5">
+					<Label for="set-name">Sync set name</Label>
+					<Input id="set-name" class="h-7 text-xs" bind:value={draft.name} />
+				</div>
 
-		<!-- Source -->
-		<div class="grid gap-1.5">
-			<Label for="set-source">Source directory (under root)</Label>
-			<div class="flex gap-1.5">
-				<Input id="set-source" class="h-7 text-xs" bind:value={draft.source} placeholder="photos" />
-				<Button variant="outline" size="sm" class="h-7 px-2" onclick={() => pickFor('source')} title="Browse">
-					<FolderOpen class="size-3.5" />
-				</Button>
+				<!-- Source -->
+				<div class="grid gap-1.5">
+					<Label for="set-source">Source directory (under root)</Label>
+					<div class="flex gap-1.5">
+						<Input id="set-source" class="h-7 text-xs" bind:value={draft.source} placeholder="photos" />
+						<Button variant="outline" size="sm" class="h-7 px-2" onclick={() => pickFor('source')} title="Browse">
+							<FolderOpen class="size-3.5" />
+						</Button>
+					</div>
+				</div>
+
+				<!-- Destinations -->
+						<div class="flex items-center justify-between">
+							<Label>Destinations</Label>
+							<Button variant="outline" size="sm" class="h-6 px-2" onclick={addDestination}>
+								<Plus class="size-3.5" /> Add
+							</Button>
+						</div>
+						<div class="flex flex-col gap-2">
+							{#each draft.destinations as dest (dest.id)}
+								<div class="rounded-md border p-2">
+									<div class="flex items-center gap-1.5">
+										<Input
+											class="h-6 flex-1 text-xs"
+											placeholder="Name"
+											bind:value={dest.name}
+											aria-label="Destination name"
+										/>
+										<Button
+											variant="ghost"
+											size="sm"
+											class="size-6 p-1 text-muted-foreground hover:text-destructive"
+											onclick={() => removeDestination(dest)}
+											title="Remove destination"
+										>
+											<X class="size-3.5" />
+										</Button>
+									</div>
+									<div class="mt-1.5 flex items-center gap-1.5">
+										<Input
+											class="h-6 flex-1 text-xs"
+											placeholder="path under root"
+											bind:value={dest.path}
+											aria-label="Destination path"
+										/>
+										<Button
+											variant="outline"
+											size="sm"
+											class="h-6 px-1.5"
+											onclick={() => pickFor({ id: dest.id })}
+											title="Browse"
+										>
+											<FolderOpen class="size-3.5" />
+										</Button>
+									</div>
+									<div class="mt-1.5 flex items-center gap-1.5">
+										<Label class="text-muted-foreground">Group</Label>
+										<Select.Root
+											type="single"
+											value={String(dest.group)}
+											onValueChange={(v) => (dest.group = Number(v))}
+										>
+											<Select.Trigger class="h-6 w-16 text-xs">
+												{dest.group}
+											</Select.Trigger>
+											<Select.Content class="text-xs">
+												{#each GROUPS as g (g)}
+													<Select.Item value={String(g)} label={`Group ${g}`} />
+												{/each}
+											</Select.Content>
+										</Select.Root>
+										<span class="ml-auto text-[10px] text-muted-foreground">groups sync in order 1 → 10</span>
+									</div>
+								</div>
+							{/each}
+							{#if draft.destinations.length === 0}
+								<p class="text-muted-foreground">No destinations.</p>
+							{/if}
+						</div>
+
+						<Separator />
+
+		
+			</div>
+			<!-- Right: options + filters -->
+			<div class="flex flex-col gap-3">
+				<!-- Options -->
+						<div class="grid gap-1.5">
+							<Label for="set-delta">Datestamp delta (seconds)</Label>
+							<Input
+								id="set-delta"
+								class="h-7 w-24 text-xs"
+								type="number"
+								min="0"
+								step="1"
+								bind:value={draft.dateDeltaSeconds}
+							/>
+							<p class="text-[10px] text-muted-foreground">
+								Files with equal size and timestamps within this delta are considered in sync.
+							</p>
+						</div>
+
+						<div class="flex items-center justify-between">
+							<Label for="set-deletions">Sync deletions</Label>
+							<Switch id="set-deletions" bind:checked={draft.syncDeletions} />
+						</div>
+
+						<div class="grid gap-1.5">
+							<Label>Error handling</Label>
+							<Select.Root
+								type="single"
+								value={draft.errorPolicy}
+								onValueChange={(v) => (draft.errorPolicy = v as typeof draft.errorPolicy)}
+							>
+								<Select.Trigger class="h-7 text-xs">
+									{POLICIES.find((p) => p.value === draft.errorPolicy)?.label ?? 'Ask user'}
+								</Select.Trigger>
+								<Select.Content class="text-xs">
+									{#each POLICIES as policy (policy.value)}
+										<Select.Item value={policy.value} label={policy.label} />
+									{/each}
+								</Select.Content>
+							</Select.Root>
+						</div>
+
+						<div class="grid gap-1.5">
+							<Label for="set-include">Include filters (one per line, * wildcard)</Label>
+							<Textarea
+								id="set-include"
+								class="min-h-16 text-xs"
+								placeholder={'photos\n*.txt'}
+								value={draft.includeFilters.join('\n')}
+								oninput={(e: Event & { currentTarget: EventTarget & HTMLTextAreaElement }) =>
+									(draft.includeFilters = e.currentTarget.value
+										.split('\n')
+										.map((s) => s.trim())
+										.filter(Boolean))}
+							/>
+							<p class="text-[10px] text-muted-foreground">Empty list includes everything.</p>
+						</div>
+
+						<div class="grid gap-1.5">
+							<Label for="set-exclude">Exclude filters (one per line, * wildcard)</Label>
+							<Textarea
+								id="set-exclude"
+								class="min-h-16 text-xs"
+								placeholder={'*.tmp\nnode_modules'}
+								value={draft.excludeFilters.join('\n')}
+								oninput={(e: Event & { currentTarget: EventTarget & HTMLTextAreaElement }) =>
+									(draft.excludeFilters = e.currentTarget.value
+										.split('\n')
+										.map((s) => s.trim())
+										.filter(Boolean))}
+							/>
+							<p class="text-[10px] text-muted-foreground">Exclusions are applied after inclusions.</p>
+						</div>
+
+		
 			</div>
 		</div>
 
 		<Separator />
 
-		<!-- Destinations -->
-		<div class="flex items-center justify-between">
-			<Label>Destinations</Label>
-			<Button variant="outline" size="sm" class="h-6 px-2" onclick={addDestination}>
-				<Plus class="size-3.5" /> Add
-			</Button>
-		</div>
-		<div class="flex flex-col gap-2">
-			{#each draft.destinations as dest (dest.id)}
-				<div class="rounded-md border p-2">
-					<div class="flex items-center gap-1.5">
-						<Input
-							class="h-6 flex-1 text-xs"
-							placeholder="Name"
-							bind:value={dest.name}
-							aria-label="Destination name"
-						/>
-						<Button
-							variant="ghost"
-							size="sm"
-							class="size-6 p-1 text-muted-foreground hover:text-destructive"
-							onclick={() => removeDestination(dest)}
-							title="Remove destination"
-						>
-							<X class="size-3.5" />
-						</Button>
-					</div>
-					<div class="mt-1.5 flex items-center gap-1.5">
-						<Input
-							class="h-6 flex-1 text-xs"
-							placeholder="path under root"
-							bind:value={dest.path}
-							aria-label="Destination path"
-						/>
-						<Button
-							variant="outline"
-							size="sm"
-							class="h-6 px-1.5"
-							onclick={() => pickFor({ id: dest.id })}
-							title="Browse"
-						>
-							<FolderOpen class="size-3.5" />
-						</Button>
-					</div>
-					<div class="mt-1.5 flex items-center gap-1.5">
-						<Label class="text-muted-foreground">Group</Label>
-						<Select.Root
-							type="single"
-							value={String(dest.group)}
-							onValueChange={(v) => (dest.group = Number(v))}
-						>
-							<Select.Trigger class="h-6 w-16 text-xs">
-								{dest.group}
-							</Select.Trigger>
-							<Select.Content class="text-xs">
-								{#each GROUPS as g (g)}
-									<Select.Item value={String(g)} label={`Group ${g}`} />
-								{/each}
-							</Select.Content>
-						</Select.Root>
-						<span class="ml-auto text-[10px] text-muted-foreground">groups sync in order 1 → 10</span>
-					</div>
-				</div>
-			{/each}
-			{#if draft.destinations.length === 0}
-				<p class="text-muted-foreground">No destinations.</p>
-			{/if}
-		</div>
-
-		<Separator />
-
-		<!-- Options -->
-		<div class="grid gap-1.5">
-			<Label for="set-delta">Datestamp delta (seconds)</Label>
-			<Input
-				id="set-delta"
-				class="h-7 w-24 text-xs"
-				type="number"
-				min="0"
-				step="1"
-				bind:value={draft.dateDeltaSeconds}
-			/>
-			<p class="text-[10px] text-muted-foreground">
-				Files with equal size and timestamps within this delta are considered in sync.
-			</p>
-		</div>
-
-		<div class="flex items-center justify-between">
-			<Label for="set-deletions">Sync deletions</Label>
-			<Switch id="set-deletions" bind:checked={draft.syncDeletions} />
-		</div>
-
-		<div class="grid gap-1.5">
-			<Label>Error handling</Label>
-			<Select.Root
-				type="single"
-				value={draft.errorPolicy}
-				onValueChange={(v) => (draft.errorPolicy = v as typeof draft.errorPolicy)}
-			>
-				<Select.Trigger class="h-7 text-xs">
-					{POLICIES.find((p) => p.value === draft.errorPolicy)?.label ?? 'Ask user'}
-				</Select.Trigger>
-				<Select.Content class="text-xs">
-					{#each POLICIES as policy (policy.value)}
-						<Select.Item value={policy.value} label={policy.label} />
-					{/each}
-				</Select.Content>
-			</Select.Root>
-		</div>
-
-		<div class="grid gap-1.5">
-			<Label for="set-include">Include filters (one per line, * wildcard)</Label>
-			<Textarea
-				id="set-include"
-				class="min-h-16 text-xs"
-				placeholder={'photos\n*.txt'}
-				value={draft.includeFilters.join('\n')}
-				oninput={(e: Event & { currentTarget: EventTarget & HTMLTextAreaElement }) =>
-					(draft.includeFilters = e.currentTarget.value
-						.split('\n')
-						.map((s) => s.trim())
-						.filter(Boolean))}
-			/>
-			<p class="text-[10px] text-muted-foreground">Empty list includes everything.</p>
-		</div>
-
-		<div class="grid gap-1.5">
-			<Label for="set-exclude">Exclude filters (one per line, * wildcard)</Label>
-			<Textarea
-				id="set-exclude"
-				class="min-h-16 text-xs"
-				placeholder={'*.tmp\nnode_modules'}
-				value={draft.excludeFilters.join('\n')}
-				oninput={(e: Event & { currentTarget: EventTarget & HTMLTextAreaElement }) =>
-					(draft.excludeFilters = e.currentTarget.value
-						.split('\n')
-						.map((s) => s.trim())
-						.filter(Boolean))}
-			/>
-			<p class="text-[10px] text-muted-foreground">Exclusions are applied after inclusions.</p>
-		</div>
-
-		<Separator />
-
 		<!-- Actions -->
-		<div class="flex flex-wrap gap-1.5">
-			<Button
-				variant="outline"
-				size="sm"
-				class="h-7"
-				onclick={() => app.duplicateSet()}
-				title="Duplicate this sync set as a new one"
-				disabled={!app.draft}
-			>
-				<Copy class="size-3.5" /> Copy
-			</Button>
-			<Button
-				variant="outline"
-				size="sm"
-				class="h-7"
-				onclick={() => {
-					if (app.activeSetId && confirm(`Delete sync set "${draft.name}"?`)) void app.deleteActiveSet();
-				}}
-				disabled={!app.activeSetId || app.draftIsNew}
-				title={app.draftIsNew ? 'Save the set first (this copy is not stored yet)' : 'Delete the saved sync set'}
-			>
-				<Trash2 class="size-3.5" /> Delete
-			</Button>
-			<Button variant="outline" size="sm" class="h-7" onclick={() => app.exportActiveSet()}>
-				<Download class="size-3.5" /> Export
-			</Button>
-			<Button variant="outline" size="sm" class="h-7" onclick={() => importInput?.click()}>
-				<Upload class="size-3.5" /> Import
-			</Button>
-			<input
-				bind:this={importInput}
-				type="file"
-				accept="application/json,.json"
-				class="hidden"
-				onchange={(e) => void onImport(e)}
-			/>
-			{#if app.dirty}
-				<Badge variant="secondary" class="ml-auto">unsaved changes</Badge>
-			{/if}
-		</div>
+				<div class="flex flex-wrap gap-1.5">
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-7"
+						onclick={() => app.duplicateSet()}
+						title="Duplicate this sync set as a new one"
+						disabled={!app.draft}
+					>
+						<Copy class="size-3.5" /> Copy
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-7"
+						onclick={() => {
+							if (app.activeSetId && confirm(`Delete sync set "${draft.name}"?`)) void app.deleteActiveSet();
+						}}
+						disabled={!app.activeSetId || app.draftIsNew}
+						title={app.draftIsNew ? 'Save the set first (this copy is not stored yet)' : 'Delete the saved sync set'}
+					>
+						<Trash2 class="size-3.5" /> Delete
+					</Button>
+					<Button variant="outline" size="sm" class="h-7" onclick={() => app.exportActiveSet()}>
+						<Download class="size-3.5" /> Export
+					</Button>
+					<Button variant="outline" size="sm" class="h-7" onclick={() => importInput?.click()}>
+						<Upload class="size-3.5" /> Import
+					</Button>
+					<input
+						bind:this={importInput}
+						type="file"
+						accept="application/json,.json"
+						class="hidden"
+						onchange={(e) => void onImport(e)}
+					/>
+					{#if app.dirty}
+						<Badge variant="secondary" class="ml-auto">unsaved changes</Badge>
+					{/if}
+				</div>
 	{/if}
 </div>
 

@@ -77,7 +77,14 @@
 	}
 }
 
-/* Dense data tables: compact rows by default. */
+/* Dense data tables: compact rows by default. Sticky header on the th
+   cells (sticky on thead is unreliable inside scroll containers). */
+table.mfs-dense thead th {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	background: var(--background);
+}
 table.mfs-dense th,
 table.mfs-dense td {
 	padding-top: 0.125rem;
@@ -87,7 +94,19 @@ table.mfs-dense td {
 	height: auto;
 }
 
-/* Scrollbars that fit the dark theme. */
+/*
+ * bits-ui ScrollArea: hide the native scrollbar (the always-visible custom
+ * scrollbar is rendered by the ScrollArea component; type="always").
+ */
+.cn-scroll-area-viewport {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+.cn-scroll-area-viewport::-webkit-scrollbar {
+	display: none;
+}
+
+/* Fallback native scrollbars elsewhere, styled to fit the dark theme. */
 * {
 	scrollbar-color: oklch(0.274 0.006 286.033) transparent;
 }
