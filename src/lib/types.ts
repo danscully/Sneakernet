@@ -121,7 +121,35 @@ export type SyncEventType =
 	| 'confirm'
 	| 'confirm-resolved'
 	| 'run-done'
+	| 'runs-cleared'
 	| 'log';
+
+/** A destination of a run, as announced in run-start / run records. */
+export interface RunDestInfo {
+	id: string;
+	name: string;
+	path: string;
+	group: number;
+}
+
+/**
+ * One sync run in the global run registry: every run ever started by any
+ * user in this server process, kept after it finishes until the user clears
+ * it. This is what the Status tab shows.
+ */
+export interface RunRecord {
+	runId: string;
+	setId: string;
+	setName: string;
+	startedAt: number;
+	/** null while the run is still executing. */
+	finishedAt: number | null;
+	/** True when the run ended by stopping (vs. completing normally). */
+	stopped: boolean;
+	dests: RunDestInfo[];
+	/** Latest per-destination progress snapshot (aligned with dests by id). */
+	progress: DestProgress[];
+}
 
 export interface SyncEvent {
 	type: SyncEventType;
@@ -142,6 +170,11 @@ export interface SyncEvent {
 	relPath?: string;
 	/** Whether the run is finished (run-done). */
 	finished?: boolean;
+	/** run-start: the set's name and the run's destination info. */
+	setName?: string;
+	dests?: RunDestInfo[];
+	/** run-done: true when the run ended by stopping. */
+	stopped?: boolean;
 }
 
 /** Pre-sync free-space warning for one destination (below the 1 GiB floor). */

@@ -13,9 +13,11 @@
 		Copy,
 		Trash2,
 		Download,
-		Upload
+		Upload,
+		Eraser
 	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { Separator } from '$lib/components/ui/separator';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
@@ -27,7 +29,7 @@
 	import CompareTable from '$lib/components/CompareTable.svelte';
 	import DestCard from '$lib/components/DestCard.svelte';
 	import { app } from '$lib/state.svelte';
-	import { formatBytes, formatDate, cn } from '$lib/utils';
+	import { formatBytes, formatDate, formatDateTime, cn } from '$lib/utils';
 
 	let tab = $state('filelist');
 	let sidebarOpen = $state(true);
@@ -165,17 +167,15 @@
 					</Button>
 				{:else if tab === 'status'}
 					<Button
-						variant="destructive"
+						variant="outline"
 						size="sm"
 						class="h-7"
-						onclick={() => void app.stopSync(null)}
-						disabled={!app.running}
+						onclick={() => void app.clearCompletedRuns()}
+						disabled={!app.anyFinished}
+						title="Remove completed and stopped syncs from this view"
 					>
-						<Square class="size-3.5" /> Stop all
+						<Eraser class="size-3.5" /> Clear completed
 					</Button>
-					{#if app.finishedAt !== null && !app.running}
-						<span class="text-[11px] text-muted-foreground">finished</span>
-					{/if}
 				{:else if tab === 'logs'}
 					<div class="flex items-center gap-1">
 						<Button
@@ -235,17 +235,59 @@
 		</Tabs.Content>
 
 		<Tabs.Content value="status" class="min-h-0 flex-1 data-[state=active]:block">
-			{#if Object.keys(app.dests).length === 0}
+			{#if app.runList.length === 0}
 				<div class="flex h-full items-center justify-center text-xs text-muted-foreground">
-					No sync running.
+					No syncs yet. Runs appear here for every sync set and user, and stay until
+					you clear them.
 				</div>
 			{:else}
-				<div class="h-full overflow-y-auto p-3">
-					<div class="flex flex-wrap gap-2.5">
-						{#each app.activeDests as dest (dest.id)}
-							<DestCard {dest} now={app.now} />
-						{/each}
-					</div>
+				<div class="h-full overflow-y-auto">
+					{#each app.runList as run, i (run.runId)}
+						{#if i > 0}
+							<Separator />
+						{/if}
+						<div class="p-3">
+							<div class="mb-2 flex flex-wrap items-center gap-2 text-xs">
+								<span class="font-medium" title={run.setName}>{run.setName}</span>
+								{#if run.finishedAt === null}
+									<Badge variant="secondary" class="h-4 px-1.5 text-[9px]">running</Badge>
+								{:else if run.stopped}
+									<Badge variant="destructive" class="h-4 px-1.5 text-[9px]">stopped</Badge>
+								{:else}
+									<Badge class="h-4 px-1.5 text-[9px]">done</Badge>
+								{/if}
+								<span class="text-[11px] text-muted-foreground">
+									started {formatDateTime(run.startedAt)}
+								</span>
+								{#if run.finishedAt !== null}
+									<span class="text-[11px] text-muted-foreground">
+										· finished {formatDateTime(run.finishedAt)}
+									</span>
+								{/if}
+								{#if run.finishedAt === null}
+									<Button
+										variant="destructive"
+										size="sm"
+										class="ml-auto h-6"
+										onclick={() => void app.stopSync(run.setId, null)}
+										title="Stop this sync"
+									>
+										<Square class="size-3.5" /> Stop
+									</Button>
+								{/if}
+							</div>
+							<div class="flex flex-wrap gap-2.5">
+								{#each app.destListOf(run) as dest (dest.id)}
+									<DestCard
+										{dest}
+										now={app.now}
+										runActive={run.finishedAt === null}
+										onStop={(destId) => void app.stopSync(run.setId, destId)}
+									/>
+								{/each}
+							</div>
+						</div>
+					{/each}
 				</div>
 			{/if}
 		</Tabs.Content>

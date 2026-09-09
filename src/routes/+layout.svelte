@@ -15,8 +15,13 @@
 	onMount(() => {
 		void app.loadSets();
 		void app.loadRoot();
+		// One global stream for every run - any set, any user (Status view).
+		app.connectStream();
 		const ticker = setInterval(() => (app.now = Date.now()), 250);
-		return () => clearInterval(ticker);
+		return () => {
+			clearInterval(ticker);
+			app.closeStream();
+		};
 	});
 
 	function onSetChange(v: string): void {
@@ -70,7 +75,7 @@
 					{app.toast.text}
 				</span>
 			{/if}
-			{#if app.running}
+			{#if app.anyRunning}
 				<Badge variant="secondary" class="h-5 text-[9px]">sync running</Badge>
 			{/if}
 			<!-- Desktop settings: only the desktop app's own webview can see or

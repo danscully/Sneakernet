@@ -15,7 +15,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { ComparePlan, DestProgress, ErrorPolicy, PendingConfirm, SyncEvent, SyncSet } from '$lib/types';
+import type {
+	ComparePlan,
+	DestProgress,
+	ErrorPolicy,
+	PendingConfirm,
+	RunRecord,
+	SyncEvent,
+	SyncSet
+} from '$lib/types';
 import { absPath } from './paths';
 import { compareSet } from './compare';
 import { LOCK_FILE } from './walker';
@@ -61,6 +69,22 @@ const LOCK_TOUCH_MS = 5_000;
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Neutral progress entry for a registry record without progress yet. */
+function blankRecordProgress(destId: string): DestProgress {
+	return {
+		destId,
+		status: 'queued',
+		currentFile: null,
+		currentFileBytes: 0,
+		currentFileSize: 0,
+		copiedBytes: 0,
+		totalBytes: 0,
+		filesDone: 0,
+		filesTotal: 0,
+		message: null
+	};
 }
 
 class RunState {
@@ -186,7 +210,16 @@ class RunState {
 			});
 		}
 
-		this.emit({ type: 'run-start' });
+		this.emit({
+			type: 'run-start',
+			setName: this.plan.setName,
+			dests: this.dests.map((d) => ({
+				id: d.destId,
+				name: d.destName,
+				path: d.destRel,
+				group: d.group
+			}))
+		});
 
 		// Groups run in numerical order; destinations within a group in parallel.
 		const groups = [...new Set(this.dests.map((d) => d.group))].sort((a, b) => a - b);
@@ -196,7 +229,10 @@ class RunState {
 			await Promise.all(members.map((d) => this.runDest(d)));
 		}
 
-		this.emit({ type: 'run-done', finished: true });
+		// A run counts as stopped when it was stopped globally or any
+		// destination ended early (including on error).
+		const stopped = this.stopAllRequested || this.dests.some((d) => d.stopped);
+		this.emit({ type: 'run-done', finished: true, stopped });
 	}
 
 	private async runDest(d: DestRun): Promise<void> {
@@ -615,10 +651,31 @@ class RunState {
 	}
 }
 
+/** Internal registry entry: RunRecord with progress indexed by dest id. */
+interface StoredRecord {
+	runId: string;
+	setId: string;
+	setName: string;
+	startedAt: number;
+	finishedAt: number | null;
+	stopped: boolean;
+	dests: RunRecord['dests'];
+	progress: Record<string, DestProgress>;
+}
+
+/** Keep at most this many finished runs in the registry. */
+const MAX_FINISHED_RUNS = 50;
+
 class SyncManager {
 	/** Latest compare plan per sync set. */
 	private plans = new Map<string, ComparePlan>();
 	private runs = new Map<string, RunState>();
+	/**
+	 * Registry of every run started in this process (running and finished):
+	 * the basis for the global Status view. Finished runs stay until the
+	 * user clears them (bounded by MAX_FINISHED_RUNS).
+	 */
+	private records = new Map<string, StoredRecord>();
 	private subscribers = new Set<(e: SyncEvent) => void>();
 	private confirmCounter = 0;
 
@@ -628,6 +685,17 @@ class SyncManager {
 	}
 
 	emit(e: SyncEvent): void {
+		// Mirror every event into the global run registry so every client
+		// (any user, any set) can watch all runs in the Status view.
+		const record = this.records.get(e.runId);
+		if (record) {
+			if (e.progress && e.destId) record.progress[e.destId] = { ...e.progress };
+			if (e.type === 'run-done') {
+				record.finishedAt = e.ts;
+				record.stopped = e.stopped ?? false;
+				this.pruneFinished();
+			}
+		}
 		for (const sub of this.subscribers) {
 			try {
 				sub(e);
@@ -662,6 +730,44 @@ class SyncManager {
 		return run ? run.snapshot() : null;
 	}
 
+	/** All runs (running and finished) of this server process, oldest first. */
+	runsSnapshot(): RunRecord[] {
+		return [...this.records.values()]
+			.sort((a, b) => a.startedAt - b.startedAt)
+			.map((r) => ({
+				runId: r.runId,
+				setId: r.setId,
+				setName: r.setName,
+				startedAt: r.startedAt,
+				finishedAt: r.finishedAt,
+				stopped: r.stopped,
+				dests: r.dests,
+				progress: r.dests.map((d) => ({ ...(r.progress[d.id] ?? blankRecordProgress(d.id)) }))
+			}));
+	}
+
+	/**
+	 * Drop every finished run from the registry ("Clear completed"). Running
+	 * runs stay. All connected clients are notified via a `runs-cleared` event.
+	 */
+	clearCompleted(): void {
+		for (const [runId, record] of this.records) {
+			if (record.finishedAt !== null) this.records.delete(runId);
+		}
+		this.emit({ type: 'runs-cleared', runId: '', setId: '', ts: Date.now() });
+	}
+
+	/** Bound the finished-run history (oldest are dropped first). */
+	private pruneFinished(): void {
+		const finished = [...this.records.values()]
+			.filter((r) => r.finishedAt !== null)
+			.sort((a, b) => a.finishedAt! - b.finishedAt!);
+		while (finished.length > MAX_FINISHED_RUNS) {
+			const oldest = finished.shift()!;
+			this.records.delete(oldest.runId);
+		}
+	}
+
 	start(plan: ComparePlan, selection: Selection, errorPolicy: ErrorPolicy): string {
 		if (this.runs.has(plan.setId)) throw new Error('a sync is already running for this set');
 		if (this.plans.get(plan.setId)?.id !== plan.id) {
@@ -669,6 +775,21 @@ class SyncManager {
 		}
 		const run = new RunState(this, plan, selection, errorPolicy);
 		this.runs.set(plan.setId, run);
+		this.records.set(run.runId, {
+			runId: run.runId,
+			setId: plan.setId,
+			setName: plan.setName,
+			startedAt: Date.now(),
+			finishedAt: null,
+			stopped: false,
+			dests: plan.destinations.map((d) => ({
+				id: d.id,
+				name: d.name,
+				path: d.path,
+				group: d.group
+			})),
+			progress: {}
+		});
 
 		// Log everything this run does to a per-run log file.
 		void cleanupOldLogs();

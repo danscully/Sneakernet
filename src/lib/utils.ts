@@ -33,6 +33,18 @@ export function formatDuration(ms: number): string {
 	return `${m}m ${String(s % 60).padStart(2, '0')}s`;
 }
 
+/** Date + time of day with seconds, for sync run start/finish stamps. */
+export function formatDateTime(ms: number): string {
+	if (!ms) return '–';
+	return new Date(ms).toLocaleString(undefined, {
+		month: 'short',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit'
+	});
+}
+
 export function formatDate(ms: number): string {
 	if (!ms) return '–';
 	return new Date(ms).toLocaleString(undefined, {

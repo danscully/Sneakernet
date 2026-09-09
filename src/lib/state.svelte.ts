@@ -8,6 +8,8 @@ import type {
 	DestProgress,
 	DestSpaceWarning,
 	PendingConfirm,
+	RunDestInfo,
+	RunRecord,
 	SyncEvent,
 	SyncLogInfo,
 	SyncSet
@@ -25,7 +27,36 @@ export interface DestView {
 	group: number;
 	progress: DestProgress;
 	startedAt: number | null;
+	/** When this destination reached a final state (null while active). */
+	finishedAt: number | null;
 	samples: RateSample[];
+}
+
+/**
+ * One sync run as shown in the Status view. Every client sees every run
+ * (from any sync set and any user) via the global event stream.
+ */
+export interface RunView {
+	runId: string;
+	setId: string;
+	setName: string;
+	startedAt: number;
+	/** null while the run is still executing. */
+	finishedAt: number | null;
+	/** True when the run ended by stopping (vs. completing normally). */
+	stopped: boolean;
+	dests: Record<string, DestView>;
+}
+
+/** Transfer rate of a destination view, from its byte samples. */
+export function rateOf(view: DestView): number {
+	const samples = view.samples;
+	if (samples.length < 2) return 0;
+	const first = samples[0]!;
+	const last = samples.at(-1)!;
+	const dt = (last.ts - first.ts) / 1000;
+	if (dt <= 0) return 0;
+	return Math.max(0, (last.bytes - first.bytes) / dt);
 }
 
 /** A selectable (copy/delete) destination cell in the compare table. */
@@ -98,11 +129,13 @@ export class AppState {
 	comparing = $state(false);
 	starting = $state(false);
 
-	runId: string | null = $state(null);
-	running = $state(false);
-	dests: Record<string, DestView> = $state({});
+	/**
+	 * Every sync run this server process has seen (running and finished),
+	 * from any set and any user - the Status view. Finished runs stay until
+	 * the user clears them ("Clear completed").
+	 */
+	runs: Record<string, RunView> = $state({});
 	confirm: PendingConfirm | null = $state(null);
-	finishedAt: number | null = $state(null);
 	toast: { kind: 'error' | 'info'; text: string } | null = $state(null);
 
 	/** True when the current draft has never been saved (new set or a copy). */
@@ -271,8 +304,32 @@ export class AppState {
 		return count;
 	}
 
-	get activeDests(): DestView[] {
-		return Object.values(this.dests).sort(
+	/** True when a sync is running for the currently active set. */
+	get running(): boolean {
+		const id = this.activeSetId;
+		return (
+			id !== null && Object.values(this.runs).some((r) => r.setId === id && r.finishedAt === null)
+		);
+	}
+
+	/** True when any user has a sync running (any set). */
+	get anyRunning(): boolean {
+		return Object.values(this.runs).some((r) => r.finishedAt === null);
+	}
+
+	/** True when at least one finished run is still shown. */
+	get anyFinished(): boolean {
+		return Object.values(this.runs).some((r) => r.finishedAt !== null);
+	}
+
+	/** All runs, newest first (the Status list). */
+	get runList(): RunView[] {
+		return Object.values(this.runs).sort((a, b) => b.startedAt - a.startedAt);
+	}
+
+	/** The destinations of one run, in group order. */
+	destListOf(run: RunView): DestView[] {
+		return Object.values(run.dests).sort(
 			(a, b) => a.group - b.group || a.name.localeCompare(b.name)
 		);
 	}
@@ -305,15 +362,10 @@ export class AppState {
 		this.draftJson = set ? JSON.stringify(set) : '';
 		this.plan = null;
 		this.selection = {};
-		this.resetRun();
-		if (id) {
-			// A fresh set selection always triggers a silent re-compare, so the
-			// File List tab shows current data without a manual click.
-			void this.compare(true);
-			this.connectStream(id);
-		} else {
-			this.closeStream();
-		}
+		// The global run stream (Status view) stays connected across set
+		// changes; a fresh set selection always triggers a silent re-compare
+		// so the File List tab shows current data without a manual click.
+		if (id) void this.compare(true);
 	}
 
 	async saveDraft(): Promise<boolean> {
@@ -418,9 +470,8 @@ export class AppState {
 			if (!auto) this.showToast('error', 'A sync is running for this set');
 			return;
 		}
-		// A new compare invalidates the previous run's progress cards.
-		this.dests = {};
-		this.finishedAt = null;
+		// Finished runs stay in the Status view until the user clears them;
+		// only the pending low-space warning belongs to the compare flow.
 		this.spaceWarning = null;
 		this.comparing = true;
 		try {
@@ -499,13 +550,6 @@ export class AppState {
 		}
 		this.starting = true;
 		this.spaceWarning = null;
-		// Optimistic state *before* the request: a fast sync can complete on the
-		// server before the fetch resolves, in which case the run-done event
-		// arrives first and must never be overwritten by this function.
-		this.running = true;
-		this.finishedAt = null;
-		this.dests = {};
-		this.confirm = null;
 		try {
 			const res = await fetch('/api/sync/start', {
 				method: 'POST',
@@ -514,7 +558,6 @@ export class AppState {
 			});
 			if (!res.ok) {
 				const data = (await res.json().catch(() => ({}))) as { error?: string };
-				this.running = false;
 				this.showToast('error', data.error ?? 'could not start sync');
 				return false;
 			}
@@ -525,27 +568,55 @@ export class AppState {
 			};
 			if (!data.started) {
 				// Low-space warning: let the caller confirm, then force.
-				this.running = false;
 				this.spaceWarning = data.warning?.destinations ?? [];
 				return false;
 			}
-			this.runId = data.runId ?? null;
-			// Only add missing views - events may already have populated them.
-			this.seedDestViews();
+			// Seed the run view immediately (the run-start event only fills in
+			// anything missing; a fast sync may even complete before it arrives).
+			if (data.runId && this.plan) {
+				this.upsertRun(
+					data.runId,
+					id,
+					this.activeSet?.name ?? '',
+					Date.now(),
+					this.plan.destinations.map((d) => ({
+						id: d.id,
+						name: d.name,
+						path: d.path,
+						group: d.group
+					}))
+				);
+			}
 			return true;
 		} finally {
 			this.starting = false;
 		}
 	}
 
-	async stopSync(destId: string | null): Promise<void> {
-		const id = this.activeSetId;
-		if (!id) return;
+	/** Stop a run of any set (destId = null stops the whole run). */
+	async stopSync(setId: string, destId: string | null): Promise<void> {
 		await fetch('/api/sync/stop', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ setId: id, destId })
+			body: JSON.stringify({ setId, destId })
 		}).catch(() => this.showToast('error', 'stop request failed'));
+	}
+
+	/**
+	 * Remove all finished (completed or stopped) runs from the Status view.
+	 * Running syncs are never touched; every connected user's view updates.
+	 */
+	async clearCompletedRuns(): Promise<void> {
+		const res = await fetch('/api/sync/clear', { method: 'POST' });
+		if (!res.ok) {
+			this.showToast('error', 'could not clear completed syncs');
+			return;
+		}
+		// The runs-cleared stream event handles this for every user; clear
+		// locally too in case the event races or the stream is down.
+		for (const run of Object.values(this.runs)) {
+			if (run.finishedAt !== null) delete this.runs[run.runId];
+		}
 	}
 
 	async respondConfirm(decision: ConfirmDecision): Promise<void> {
@@ -600,50 +671,45 @@ export class AppState {
 		return this.logsFilter === 'session' ? logs.filter((l) => l.session) : logs;
 	}
 
-	// --- Live event stream ---------------------------------------------------
+	// --- Live run stream (global: all sets, all users) ------------------------
 
-	/**
-	 * Make sure every destination of the current plan has a view card. Existing
-	 * views are never reset - SSE events may have arrived before the start
-	 * request resolved, and their progress must be preserved.
-	 */
-	seedDestViews(): void {
-		if (!this.plan) return;
-		for (const dest of this.plan.destinations) {
-			if (!this.dests[dest.id]) {
-				this.dests[dest.id] = {
-					id: dest.id,
-					name: dest.name,
-					path: dest.path,
-					group: dest.group,
-					progress: blankProgress(dest.id),
-					startedAt: null,
-					samples: []
-				};
-			}
+	/** Create (or complete) the local view of a run. */
+	private upsertRun(
+		runId: string,
+		setId: string,
+		setName: string,
+		startedAt: number,
+		dests: RunDestInfo[]
+	): RunView {
+		let run = this.runs[runId];
+		if (!run) {
+			run = { runId, setId, setName, startedAt, finishedAt: null, stopped: false, dests: {} };
+			this.runs[runId] = run;
+		} else {
+			run.setName = setName || run.setName;
 		}
+		for (const info of dests) this.ensureDestView(run, info);
+		return run;
 	}
 
-	private ensureDestView(destId: string): DestView | null {
-		if (this.dests[destId]) return this.dests[destId]!;
-		if (!this.plan) return null;
-		const dest = this.plan.destinations.find((d) => d.id === destId);
-		if (!dest) return null;
-		this.dests[destId] = {
-			id: destId,
-			name: dest.name,
-			path: dest.path,
-			group: dest.group,
-			progress: blankProgress(destId),
+	private ensureDestView(run: RunView, info: { id: string } & Partial<RunDestInfo>): DestView {
+		if (run.dests[info.id]) return run.dests[info.id]!;
+		const view: DestView = {
+			id: info.id,
+			name: info.name ?? info.id,
+			path: info.path ?? '',
+			group: info.group ?? 1,
+			progress: blankProgress(info.id),
 			startedAt: null,
+			finishedAt: null,
 			samples: []
 		};
-		return this.dests[destId]!;
+		run.dests[info.id] = view;
+		return view;
 	}
 
-	private applyProgress(destId: string, progress: DestProgress, ts: number): void {
-		const view = this.ensureDestView(destId);
-		if (!view) return;
+	private applyProgress(run: RunView, destId: string, progress: DestProgress, ts: number): void {
+		const view = this.ensureDestView(run, { id: destId });
 		view.progress = { ...progress };
 		if (progress.status === 'running' && view.startedAt === null) view.startedAt = ts;
 		if (progress.status === 'queued' || progress.status === 'stopped') view.startedAt = null;
@@ -652,21 +718,27 @@ export class AppState {
 			const cutoff = ts - 8000;
 			while (view.samples.length > 2 && view.samples[0]!.ts < cutoff) view.samples.shift();
 		}
+		if (['done', 'stopped', 'stopped-error', 'aborted'].includes(progress.status)) {
+			view.finishedAt ??= ts;
+		}
 	}
 
 	handleEvent(e: SyncEvent): void {
 		switch (e.type) {
 			case 'run-start':
-				this.running = true;
-				this.finishedAt = null;
-				this.seedDestViews();
+				this.upsertRun(e.runId, e.setId, e.setName ?? '', e.ts, e.dests ?? []);
 				break;
 			case 'dest-status':
 			case 'file-start':
 			case 'file-progress':
 			case 'file-done':
-				if (e.progress && e.destId) this.applyProgress(e.destId, e.progress, e.ts);
+			case 'dest-done': {
+				if (e.progress && e.destId) {
+					const run = this.runs[e.runId];
+					if (run) this.applyProgress(run, e.destId, e.progress, e.ts);
+				}
 				break;
+			}
 			case 'confirm':
 				this.confirm = e.confirm ?? null;
 				break;
@@ -676,42 +748,54 @@ export class AppState {
 			case 'log':
 				if (e.message) this.showToast('info', e.message);
 				break;
-			case 'dest-done':
-				if (e.progress && e.destId) this.applyProgress(e.destId, e.progress, e.ts);
+			case 'run-done': {
+				const run = this.runs[e.runId];
+				if (run) {
+					run.finishedAt = e.ts;
+					run.stopped = e.stopped ?? false;
+				}
+				if (this.confirm) this.confirm = null;
 				break;
-			case 'run-done':
-				this.running = false;
-				this.confirm = null;
-				this.finishedAt = e.ts;
+			}
+			case 'runs-cleared':
+				for (const run of Object.values(this.runs)) {
+					if (run.finishedAt !== null) delete this.runs[run.runId];
+				}
 				break;
 			default:
 				break;
 		}
-		if (e.type === 'file-skipped' && e.message && !e.message.includes('up to date')) {
+		// Skipped-file toasts belong to the user's own compare workflow.
+		if (
+			e.type === 'file-skipped' &&
+			e.message &&
+			!e.message.includes('up to date') &&
+			e.setId === this.activeSetId
+		) {
 			this.showToast('info', `Skipped ${e.relPath}: ${e.message}`);
 		}
 	}
 
-	connectStream(setId: string): void {
+	/** Connect the global run stream once: all sets, all users. */
+	connectStream(): void {
 		this.closeStream();
-		this.#es = new EventSource(`/api/sync/stream?setId=${encodeURIComponent(setId)}`);
+		this.#es = new EventSource('/api/sync/stream');
 		this.#es.addEventListener('snapshot', (ev) => {
-			const data = JSON.parse((ev as MessageEvent).data) as {
-				snapshot: { runId: string; progress: DestProgress[]; confirm: PendingConfirm | null } | null;
-			};
-			if (!data.snapshot) {
-				this.running = false;
-				this.runId = null;
-				this.confirm = null;
-				this.dests = {};
-				return;
+			const data = JSON.parse((ev as MessageEvent).data) as { runs: RunRecord[] };
+			for (const record of data.runs) {
+				const run = this.upsertRun(
+					record.runId,
+					record.setId,
+					record.setName,
+					record.startedAt,
+					record.dests
+				);
+				run.finishedAt = record.finishedAt;
+				run.stopped = record.stopped;
+				for (const p of record.progress) {
+					this.applyProgress(run, p.destId, p, record.finishedAt ?? Date.now());
+				}
 			}
-			this.running = true;
-			this.runId = data.snapshot.runId;
-			this.confirm = data.snapshot.confirm;
-			// Seed views if we do not have them yet (e.g. page reload mid-run).
-			if (!this.plan) return;
-			for (const p of data.snapshot.progress) this.applyProgress(p.destId, p, Date.now());
 		});
 		this.#es.addEventListener('event', (ev) => {
 			this.handleEvent(JSON.parse((ev as MessageEvent).data) as SyncEvent);
@@ -723,28 +807,7 @@ export class AppState {
 		this.#es = null;
 	}
 
-	resetRun(): void {
-		this.closeStream();
-		this.running = false;
-		this.runId = null;
-		this.dests = {};
-		this.confirm = null;
-		this.finishedAt = null;
-	}
-
 	// --- Misc ----------------------------------------------------------------
-
-	rateBps(destId: string): number {
-		const view = this.dests[destId];
-		if (!view) return 0;
-		const samples = view.samples;
-		if (samples.length < 2) return 0;
-		const first = samples[0]!;
-		const last = samples.at(-1)!;
-		const dt = (last.ts - first.ts) / 1000;
-		if (dt <= 0) return 0;
-		return Math.max(0, (last.bytes - first.bytes) / dt);
-	}
 
 	showToast(kind: 'error' | 'info', text: string): void {
 		this.toast = { kind, text };

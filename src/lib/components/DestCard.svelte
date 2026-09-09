@@ -3,13 +3,25 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Progress } from '$lib/components/ui/progress';
 	import { Badge } from '$lib/components/ui/badge';
-	import { app } from '$lib/state.svelte';
+	import { rateOf } from '$lib/state.svelte';
 	import { formatBytes, formatDuration, cn } from '$lib/utils';
 	import type { DestView } from '$lib/state.svelte';
 
-	let { dest, now }: { dest: DestView; now: number } = $props();
+	let {
+		dest,
+		now,
+		runActive,
+		onStop
+	}: {
+		dest: DestView;
+		now: number;
+		/** Whether this destination's run is still executing. */
+		runActive: boolean;
+		/** Stop just this destination (the parent wires it to the run). */
+		onStop: (destId: string) => void;
+	} = $props();
 
-	const rate = $derived(app.rateBps(dest.id));
+	const rate = $derived(rateOf(dest));
 	const copied = $derived(dest.progress.copiedBytes);
 	const total = $derived(dest.progress.totalBytes);
 	const finished = $derived(dest.progress.status === 'done');
@@ -29,7 +41,7 @@
 			? 0
 			: (dest.progress.status === 'running' || dest.progress.status === 'paused')
 				? now - dest.startedAt
-				: (app.finishedAt ?? now) - dest.startedAt
+				: (dest.finishedAt ?? now) - dest.startedAt
 	);
 	const remainingMs = $derived(rate > 0 ? (remainingBytes / rate) * 1000 : null);
 
@@ -66,8 +78,8 @@
 			size="sm"
 			class="size-6 p-1 text-muted-foreground hover:text-destructive"
 			title="Stop this destination"
-			disabled={!app.running || dest.progress.status === 'done' || dest.progress.status === 'stopped' || dest.progress.status === 'stopped-error'}
-			onclick={() => void app.stopSync(dest.id)}
+			disabled={!runActive || dest.progress.status === 'done' || dest.progress.status === 'stopped' || dest.progress.status === 'stopped-error'}
+			onclick={() => onStop(dest.id)}
 		>
 			<Square class="size-3.5" />
 		</Button>

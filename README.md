@@ -130,12 +130,18 @@ Example `config.json`:
 3. Press **Compare**. Review the **File List** table (sortable by Name, Path,
    Size, Modified); deselect anything you don't want.
 4. Press **Sync Selected** (green when ready). If a destination would be left
-   with under 1 GB free, a warning dialog appears first. The **In Progress**
-   tab shows live per-destination progress; it only exists while a run is
-   active. Errors pause the destination and ask how to proceed (unless the
-   policy says otherwise). **Stop all** or per-card stop aborts the run and
-   removes temp files.
-5. Every run is logged — the **Logs** tab shows the current session's runs
+   with under 1 GB free, a warning dialog appears first. Errors pause the
+   destination and ask how to proceed (unless the policy says otherwise);
+   a per-run **Stop** (or per-card stop) aborts the run and removes temp
+   files.
+5. The **Status** tab shows **every** sync of this server — every sync set
+   and every user (including remote LAN users), running or finished. Each
+   run is separated by a divider and shows its sync set name, when it
+   started (and when it finished), live per-destination progress, and a
+   running/done/stopped badge. Finished runs stay until you press
+   **Clear completed** (which never touches running syncs and updates every
+   connected user's view).
+6. Every run is logged — the **Logs** tab shows the current session's runs
    (newest first) or all recent runs, with the full text of each log.
 
 ## Desktop app (Tauri) — distribution

@@ -3,12 +3,16 @@ import { syncManager } from '$lib/server/engine';
 import type { SyncEvent } from '$lib/types';
 
 /**
- * Server-sent events stream for one sync set. On connect a `snapshot` event is
- * sent (current run state, if any), followed by `event` messages for every
- * engine event.
+ * Server-sent events stream.
+ *
+ * Without a `setId` the stream is global: the snapshot lists every run in
+ * the registry (running and finished, from any set / user) and every engine
+ * event is forwarded. This is what the Status view uses, so all users watch
+ * all syncs. With a `setId` the stream stays scoped to that set (snapshot of
+ * its active run + that set's events only).
  */
 export const GET: RequestHandler = ({ url, request }) => {
-	const setId = url.searchParams.get('setId') ?? '';
+	const setId = url.searchParams.get('setId');
 	const { signal } = request;
 	const encoder = new TextEncoder();
 
@@ -26,9 +30,13 @@ export const GET: RequestHandler = ({ url, request }) => {
 				}
 			};
 
-			send('snapshot', { snapshot: syncManager.snapshot(setId) });
+			if (setId === null) {
+				send('snapshot', { runs: syncManager.runsSnapshot() });
+			} else {
+				send('snapshot', { snapshot: syncManager.snapshot(setId) });
+			}
 			const unsubscribe = syncManager.subscribe((e: SyncEvent) => {
-				if (e.setId === setId) send('event', e);
+				if (setId === null || e.setId === setId) send('event', e);
 			});
 
 			const cleanup = () => {
