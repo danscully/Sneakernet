@@ -46,6 +46,11 @@
 		if (started) tab = 'sync';
 	}
 
+	/** Save the sync set and close the settings modal (stays open on failure). */
+	async function saveAndClose(): Promise<void> {
+		if (await app.saveDraft()) app.settingsOpen = false;
+	}
+
 	/** The In Progress tab exists only while a run is active or just finished. */
 	const showInProgress = $derived(app.running || Object.keys(app.dests).length > 0);
 	$effect(() => {
@@ -319,11 +324,26 @@
 			</div>
 			<SyncSetEditor />
 		</div>
-		<Dialog.Footer class="gap-2 sm:justify-between">
-			<Button variant="outline" size="sm" class="h-7" onclick={() => void app.saveDraft()} disabled={!app.dirty}>
+		<Dialog.Footer class="gap-2 sm:justify-end">
+			<Button
+				variant="outline"
+				size="sm"
+				class="h-7"
+				onclick={() => {
+					app.discardDraft();
+					app.settingsOpen = false;
+				}}
+			>
+				Cancel
+			</Button>
+			<Button
+				size="sm"
+				class="h-7"
+				onclick={() => void saveAndClose()}
+				disabled={!app.canSave}
+			>
 				Save
 			</Button>
-			<Button size="sm" class="h-7" onclick={() => (app.settingsOpen = false)}>Done</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

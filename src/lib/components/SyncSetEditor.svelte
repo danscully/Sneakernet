@@ -1,12 +1,11 @@
 <script lang="ts">
 	import {
 		Plus,
-		Save,
+		Copy,
 		Trash2,
 		Download,
 		Upload,
 		FolderOpen,
-		FilePlus2,
 		X
 	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -18,7 +17,7 @@
 	import { Separator } from '$lib/components/ui/separator';
 	import { Badge } from '$lib/components/ui/badge';
 	import PathPicker from './PathPicker.svelte';
-	import { app, newSyncSet } from '$lib/state.svelte';
+	import { app } from '$lib/state.svelte';
 	import type { DestinationConfig } from '$lib/types';
 
 	const GROUPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -62,13 +61,6 @@
 		draft.destinations = draft.destinations.filter((d) => d.id !== dest.id);
 	}
 
-	function newSet(): void {
-		const set = newSyncSet();
-		app.draft = set;
-		app.draftJson = JSON.stringify(set);
-		app.activeSetId = null;
-	}
-
 	async function onImport(e: Event): Promise<void> {
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
@@ -81,7 +73,9 @@
 	{#if draft === null}
 		<div class="flex flex-col gap-2">
 			<p class="text-muted-foreground">No sync set selected. Create one to get started.</p>
-			<Button size="sm" class="w-fit" onclick={newSet}><FilePlus2 class="size-3.5" /> New Sync Set</Button>
+			<Button size="sm" class="w-fit" onclick={() => app.beginNewSet()}>
+				<Plus class="size-3.5" /> Create New SyncSet
+			</Button>
 		</div>
 	{:else}
 		<!-- Name -->
@@ -249,11 +243,15 @@
 
 		<!-- Actions -->
 		<div class="flex flex-wrap gap-1.5">
-			<Button size="sm" class="h-7" onclick={() => void app.saveDraft()} disabled={!app.dirty}>
-				<Save class="size-3.5" /> Save
-			</Button>
-			<Button variant="outline" size="sm" class="h-7" onclick={newSet}>
-				<FilePlus2 class="size-3.5" /> New
+			<Button
+				variant="outline"
+				size="sm"
+				class="h-7"
+				onclick={() => app.duplicateSet()}
+				title="Duplicate this sync set as a new one"
+				disabled={!app.draft}
+			>
+				<Copy class="size-3.5" /> Copy
 			</Button>
 			<Button
 				variant="outline"
@@ -262,7 +260,8 @@
 				onclick={() => {
 					if (app.activeSetId && confirm(`Delete sync set "${draft.name}"?`)) void app.deleteActiveSet();
 				}}
-				disabled={!app.activeSetId}
+				disabled={!app.activeSetId || app.draftIsNew}
+				title={app.draftIsNew ? 'Save the set first (this copy is not stored yet)' : 'Delete the saved sync set'}
 			>
 				<Trash2 class="size-3.5" /> Delete
 			</Button>

@@ -95,6 +95,39 @@ export class AppState {
 	finishedAt: number | null = $state(null);
 	toast: { kind: 'error' | 'info'; text: string } | null = $state(null);
 
+	/** True when the current draft has never been saved (new set or a copy). */
+	get draftIsNew(): boolean {
+		return this.draft !== null && !this.sets.some((s) => s.id === this.draft?.id);
+	}
+
+	/** True when the footer's Save button should be enabled. */
+	get canSave(): boolean {
+		return this.draft !== null && (this.dirty || this.draftIsNew);
+	}
+
+	/**
+	 * Duplicate the set being edited as a new, unsaved draft. Saving creates
+	 * the copy; cancelling returns to the original set untouched.
+	 */
+	duplicateSet(): void {
+		const source = this.draft ?? this.activeSet;
+		if (!source) return;
+		const copy = $state.snapshot(source) as SyncSet;
+		copy.id = crypto.randomUUID();
+		copy.name = `${source.name} (copy)`;
+		copy.destinations = copy.destinations.map((d) => ({ ...d, id: crypto.randomUUID().slice(0, 8) }));
+		this.draft = copy;
+		this.draftJson = JSON.stringify(copy);
+		this.showToast('info', 'Editing a copy - press Save to create it');
+	}
+
+	/** Discard unsaved draft changes (revert to the saved set, or clear a new draft). */
+	discardDraft(): void {
+		const set = this.activeSet;
+		this.draft = set ? ($state.snapshot(set) as SyncSet) : null;
+		this.draftJson = set ? JSON.stringify(set) : '';
+	}
+
 	/**
 	 * Create a brand-new (unsaved) sync set draft and open the editor modal.
 	 * Called from the "Create New SyncSet..." dropdown entry.
