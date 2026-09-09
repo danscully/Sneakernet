@@ -3,12 +3,12 @@
  *
  * All synced directories live under a single root path that is configured
  * locally on the server (never by the client). Resolution order:
- *   1. METFILESYNC_ROOT environment variable
- *   2. "root" key in ./config.json (server deployment config)
- *   3. ./data/root (development default)
+ *   1. Environment variable
+ *   2. Key in ./config.json (server deployment config)
+ *   3. Development default
  *
- * Persistent app data (sync sets, settings) is stored as JSON in METFILESYNC_DATA
- * (default ./data).
+ * Persistent app data (sync sets, settings, sync logs) is stored as JSON in
+ * METFILESYNC_DATA (default ./data).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,6 +16,7 @@ import path from 'node:path';
 interface LocalConfig {
 	root?: string;
 	data?: string;
+	logRetentionDays?: number;
 }
 
 function readLocalConfig(): LocalConfig {
@@ -46,5 +47,17 @@ export const DATA_DIR = ensureDir(
 
 ensureDir(ROOT);
 
+/** How many days sync log files are kept (default 7). */
+export const LOG_RETENTION_DAYS = (() => {
+	const raw = Number(process.env['METFILESYNC_LOG_RETENTION_DAYS'] ?? local.logRetentionDays ?? 7);
+	return Number.isFinite(raw) && raw >= 0 ? raw : 7;
+})();
+
+/** Directory where per-run sync log files are written. */
+export const LOG_DIR = ensureDir(path.join(DATA_DIR, 'logs'));
+
 export const SYNCSETS_FILE = path.join(DATA_DIR, 'syncsets.json');
 export const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+
+/** Timestamp of the server process start (used to split "this session" logs). */
+export const SERVER_STARTED_AT = Date.now();

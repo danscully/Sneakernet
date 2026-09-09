@@ -6,8 +6,10 @@ import type {
 	ConfirmDecision,
 	DestinationConfig,
 	DestProgress,
+	DestSpaceWarning,
 	PendingConfirm,
 	SyncEvent,
+	SyncLogInfo,
 	SyncSet
 } from '$lib/types';
 
@@ -93,11 +95,40 @@ export class AppState {
 	finishedAt: number | null = $state(null);
 	toast: { kind: 'error' | 'info'; text: string } | null = $state(null);
 
+	/**
+	 * Create a brand-new (unsaved) sync set draft and open the editor modal.
+	 * Called from the "Create New SyncSet..." dropdown entry.
+	 */
+	beginNewSet(): void {
+		const set = newSyncSet();
+		this.draft = set;
+		this.draftJson = JSON.stringify(set);
+		this.activeSetId = null;
+		this.plan = null;
+		this.selection = {};
+		this.spaceWarning = null;
+		this.settingsOpen = true;
+	}
+
 	/** Ticker so elapsed/remaining displays stay live while running. */
 	now = $state(Date.now());
 
 	/** Absolute path of the sync root (from the server deployment config). */
 	rootPath: string | null = $state(null);
+
+	/** The sync set settings modal (editor lives on the main page now). */
+	settingsOpen = $state(false);
+
+	/** Pre-sync free-space warning awaiting user confirmation. */
+	spaceWarning: DestSpaceWarning[] | null = $state(null);
+
+	/** Sync run logs. */
+	logs: SyncLogInfo[] | null = $state(null);
+	logsFilter: 'session' | 'all' = $state('session');
+	activeLogId: string | null = $state(null);
+	logText: string | null = $state(null);
+	loadingLogs = $state(false);
+	loadingLogText = $state(false);
 
 	#es: EventSource | null = null;
 	#savedDraft = '';
@@ -291,6 +322,10 @@ export class AppState {
 	async compare(): Promise<void> {
 		const id = this.activeSetId;
 		if (!id || this.comparing) return;
+		// A new compare invalidates the previous run's progress cards.
+		this.dests = {};
+		this.finishedAt = null;
+		this.spaceWarning = null;
 		if (this.dirty) {
 			this.showToast('error', 'Save the sync set before comparing');
 			return;
@@ -361,8 +396,13 @@ export class AppState {
 
 	// --- Sync ----------------------------------------------------------------
 
-	/** Returns true when the sync was started successfully. */
-	async startSync(): Promise<boolean> {
+	/**
+	 * Start a sync. Returns true when the sync was started successfully;
+	 * when the server reports a low-space warning it is stored in
+	 * `spaceWarning` and the caller should ask the user, then re-invoke with
+	 * force = true.
+	 */
+	async startSync(force = false): Promise<boolean> {
 		const id = this.activeSetId;
 		if (!id || !this.plan || this.running) return false;
 		if (this.selectedCount === 0) {
@@ -370,6 +410,7 @@ export class AppState {
 			return false;
 		}
 		this.starting = true;
+		this.spaceWarning = null;
 		// Optimistic state *before* the request: a fast sync can complete on the
 		// server before the fetch resolves, in which case the run-done event
 		// arrives first and must never be overwritten by this function.
@@ -381,7 +422,7 @@ export class AppState {
 			const res = await fetch('/api/sync/start', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ setId: id, selection: this.selection })
+				body: JSON.stringify({ setId: id, selection: this.selection, force })
 			});
 			if (!res.ok) {
 				const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -389,8 +430,18 @@ export class AppState {
 				this.showToast('error', data.error ?? 'could not start sync');
 				return false;
 			}
-			const data = (await res.json()) as { runId: string };
-			this.runId = data.runId;
+			const data = (await res.json()) as {
+				started: boolean;
+				runId?: string;
+				warning?: { destinations: DestSpaceWarning[] };
+			};
+			if (!data.started) {
+				// Low-space warning: let the caller confirm, then force.
+				this.running = false;
+				this.spaceWarning = data.warning?.destinations ?? [];
+				return false;
+			}
+			this.runId = data.runId ?? null;
 			// Only add missing views - events may already have populated them.
 			this.seedDestViews();
 			return true;
@@ -421,6 +472,44 @@ export class AppState {
 		if (!res.ok) {
 			this.showToast('error', 'could not deliver the decision');
 		}
+	}
+
+	// --- Logs -----------------------------------------------------------------
+
+	/** Fetch the list of sync run logs (all runs; filter client-side). */
+	async loadLogs(): Promise<void> {
+		this.loadingLogs = true;
+		try {
+			const res = await fetch('/api/logs');
+			if (!res.ok) return;
+			const data = (await res.json()) as { logs: SyncLogInfo[]; retentionDays: number };
+			this.logs = data.logs;
+		} finally {
+			this.loadingLogs = false;
+		}
+	}
+
+	/** Open one log (its content is shown in the Logs tab). */
+	async openLog(runId: string): Promise<void> {
+		this.activeLogId = runId;
+		this.logText = null;
+		this.loadingLogText = true;
+		try {
+			const res = await fetch(`/api/logs/${encodeURIComponent(runId)}`);
+			if (!res.ok) {
+				this.showToast('error', 'could not load the log');
+				return;
+			}
+			const data = (await res.json()) as { content: string };
+			this.logText = data.content;
+		} finally {
+			this.loadingLogText = false;
+		}
+	}
+
+	get visibleLogs(): SyncLogInfo[] {
+		const logs = this.logs ?? [];
+		return this.logsFilter === 'session' ? logs.filter((l) => l.session) : logs;
 	}
 
 	// --- Live event stream ---------------------------------------------------
@@ -495,6 +584,9 @@ export class AppState {
 				break;
 			case 'confirm-resolved':
 				this.confirm = null;
+				break;
+			case 'log':
+				if (e.message) this.showToast('info', e.message);
 				break;
 			case 'dest-done':
 				if (e.progress && e.destId) this.applyProgress(e.destId, e.progress, e.ts);

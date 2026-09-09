@@ -74,6 +74,7 @@ export interface ComparePlan {
 
 export type DestStatus =
 	| 'queued'
+	| 'waiting'
 	| 'running'
 	| 'paused'
 	| 'done'
@@ -141,4 +142,30 @@ export interface SyncEvent {
 	relPath?: string;
 	/** Whether the run is finished (run-done). */
 	finished?: boolean;
+}
+
+/** Pre-sync free-space warning for one destination (below the 1 GiB floor). */
+export interface DestSpaceWarning {
+	destId: string;
+	name: string;
+	path: string;
+	/** Bytes that will be copied to this destination. */
+	requiredBytes: number;
+	/** Bytes currently free at (or above) the destination. */
+	availableBytes: number;
+	/** Projected free bytes after the sync. */
+	projectedFreeBytes: number;
+	insufficient: boolean;
+}
+
+/** Log list entry (from the first line of a log file). */
+export interface SyncLogInfo {
+	runId: string;
+	setId: string;
+	setName: string;
+	startedAt: number;
+	file: string;
+	size: number;
+	/** True when the run belongs to the current server session. */
+	session: boolean;
 }

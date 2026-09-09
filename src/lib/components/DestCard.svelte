@@ -38,13 +38,14 @@
 			? 'default'
 			: dest.progress.status === 'running'
 				? 'secondary'
-				: dest.progress.status === 'paused' || dest.progress.status === 'queued'
+				: dest.progress.status === 'paused' || dest.progress.status === 'queued' || dest.progress.status === 'waiting'
 					? 'outline'
 					: 'destructive'
 	);
 	const statusText = $derived(
 		{
 			queued: 'queued',
+			waiting: 'waiting for lock',
 			running: 'syncing',
 			paused: 'paused',
 			done: 'done',

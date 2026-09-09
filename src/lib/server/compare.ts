@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { ComparePlan, DestDecision, PlanItem, SyncSet } from '$lib/types';
 import { sanitizeRelPath } from './paths';
 import { buildFilters } from './filters';
-import { walkTree, type WalkMap } from './walker';
+import { isEngineFile, walkTree, type WalkMap } from './walker';
 
 /**
  * Compare a sync set's source against all of its destinations.
@@ -37,6 +37,10 @@ export async function compareSet(set: SyncSet): Promise<ComparePlan> {
 
 	set.destinations.forEach((dest, i) => {
 		const destMap = destWalks[i]!;
+		// Lock files and leftover temp copies belong to the engine, not the user.
+		for (const relPath of destMap.keys()) {
+			if (isEngineFile(relPath)) destMap.delete(relPath);
+		}
 
 		// --- Source -> destination -----------------------------------------
 		for (const [relPath, srcEntry] of source) {

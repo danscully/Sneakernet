@@ -36,6 +36,19 @@ APFS `clonefile` fast path) with progress streamed back into the UI.
 - **Path safety** — all directories live under a single root path from the
   server deployment config; user-entered paths are sanitized and cannot escape
   it.
+- **Destination semaphore** — a lock file (`.mfs-lock`) at each destination
+  root prevents two syncs from targeting the same directory at once. The
+  holder touches it every 5 seconds; a sync that finds a lock reports
+  "waiting" and, after 10 seconds without a touch, breaks it as stale.
+- **Free-space preflight** — before a sync starts, the transfer size is
+  compared against each destination's free space; if a destination would end
+  with less than 1 GB free, a warning dialog asks before proceeding. The
+  sidebar shows live free space per destination.
+- **Sync logs** — every run writes a timestamped log (file copies, deletions,
+  skips, errors, lock waits). View the last run or all runs in the Logs tab;
+  logs are pruned after a configurable retention (default 7 days).
+- **Sortable file list** — click Name / Path / Size / Modified to sort
+  (click again to reverse; a third click returns to plan order).
 
 ## Quick start
 
@@ -53,6 +66,32 @@ npm run build           # builds native addon + SvelteKit app
 node build              # adapter-node server (PORT env, default 3000)
 ```
 
+#### Building the native addon per platform
+
+`npm run build:native` compiles the addon for the machine you run it on —
+native modules cannot be cross-compiled from one OS to another, so build on
+each target platform (or in CI).
+
+- **macOS** (arm64 / x64): requires Xcode Command Line Tools
+  (`xcode-select --install`). `npm run build:native` produces
+  `native/build/Release/metfilesync_native.node`. The APFS `clonefile` fast
+  path is used automatically when the filesystem supports it.
+- **Windows** (x64): requires Visual Studio Build Tools 2022 (the
+  "Desktop development with C++" workload) and Python 3 (node-gyp uses it).
+  Then:
+  ```powershell
+  npm run build:native
+  ```
+  The addon is written against the same N-API v8 on both platforms: the copy
+  loop uses positioned `ReadFile`/`WriteFile` on Windows and `pread`/`pwrite`
+  on POSIX; rename/delete/mkdir/timestamp calls map to their Win32
+  equivalents (`MoveFileEx`, `DeleteFileW`, `CreateDirectoryW`, `SetFileTime`).
+  Note that `node-gyp` needs the msvs toolchain on `PATH`; if Visual Studio
+  is installed for the current user, run the build from a
+  "Developer Command Prompt" or `npm config set msvs_version 2022`.
+- **Linux** (optional): needs a C++17 toolchain (`build-essential` /
+  `g++`); the POSIX path is shared with macOS minus clonefile.
+
 ## Configuration (server-side, never client-supplied)
 
 Resolution order: environment variable → `config.json` in the working
@@ -64,26 +103,40 @@ directory → default.
 | Data dir | `METFILESYNC_DATA` | `data` | `./data` | Where `syncsets.json` is stored |
 | Native addon | `METFILESYNC_NATIVE` | — | `./native/build/Release/metfilesync_native.node` | Path to the `.node` binary |
 | Disable clone | `METFILESYNC_NO_CLONE=1` | — | off | Force the chunked copy loop (progress even on APFS) |
+| Log retention | `METFILESYNC_LOG_RETENTION_DAYS` | `logRetentionDays` | `7` | Days sync log files are kept in `data/logs` |
+
+Windows note: `config.json` is read from the working directory of the server
+process, same as macOS/Linux.
 
 Example `config.json`:
 
 ```json
-{ "root": "/Volumes/Media/sync-root" }
+{
+  "root": "/Volumes/Media/sync-root",
+  "logRetentionDays": 7
+}
 ```
 
 ## Using the app
 
-1. Pick or create a sync set (left panel), set the **source directory** and one
-   or more **destinations** (paths are relative to the root; use the folder
-   icon to browse). Give each destination a **group** if you want ordering.
+1. Pick a sync set from the header dropdown (or **Create New SyncSet...** below
+   the divider in that dropdown). The left sidebar summarizes the set; press
+   **Edit** to open the settings modal and set the **source directory** and
+   **destinations** (paths are relative to the root; the folder icon browses
+   and can create new subdirectories). Give each destination a **group** if
+   you want ordering.
 2. Configure options: datestamp delta (seconds), sync deletions, error policy,
    include/exclude filters.
-3. **Save**, then press **Compare**. Review the table; deselect anything you
-   don't want.
-4. Press **Sync selected** — the Sync tab shows live progress per destination.
-   Errors pause the destination and ask how to proceed (unless the policy says
-   otherwise). **Stop all** or per-card stop aborts the run and removes temp
-   files.
+3. Press **Compare**. Review the **File List** table (sortable by Name, Path,
+   Size, Modified); deselect anything you don't want.
+4. Press **Sync Selected** (green when ready). If a destination would be left
+   with under 1 GB free, a warning dialog appears first. The **In Progress**
+   tab shows live per-destination progress; it only exists while a run is
+   active. Errors pause the destination and ask how to proceed (unless the
+   policy says otherwise). **Stop all** or per-card stop aborts the run and
+   removes temp files.
+5. Every run is logged — the **Logs** tab shows the current session's runs
+   (newest first) or all recent runs, with the full text of each log.
 
 ## Development
 
@@ -117,6 +170,8 @@ src/lib/server/
   engine.ts               SyncManager: grouped runner, temp files, error policy,
                           confirmations, event bus
   syncsets.ts             validation + JSON persistence of sync sets
+  space.ts                free-space accounting (pre-sync warning + sidebar)
+  logger.ts               per-run sync log files + retention cleanup
 src/lib/types.ts          shared client/server types
 src/lib/state.svelte.ts   client state (Svelte 5 runes) + SSE handling
 src/lib/components/       app components (CompareTable, DestCard, PathPicker,
@@ -139,6 +194,11 @@ tests/                    vitest suites: native addon, filters, paths, compare,
 | `POST /api/sync/confirm` | answer a pause prompt |
 | `GET /api/sync/stream?setId=` | SSE event stream (+ initial snapshot) |
 | `GET /api/tree?path=` | directory listing under the root (path picker) |
+| `POST /api/tree` | create a subdirectory (path picker "Create") |
+| `GET /api/config` | read-only server info (sync root path) |
+| `GET /api/space?path=` | free/total space of a directory (nearest existing ancestor) |
+| `GET /api/logs` | list sync run logs (newest first, with retention info) |
+| `GET /api/logs/[runId]` | full text of one sync run log |
 
 ## Notes & limitations
 
@@ -146,5 +206,6 @@ tests/                    vitest suites: native addon, filters, paths, compare,
 - Only files are synced/deleted; directories are created as needed but empty
   directories are never removed.
 - Symlinks are followed (copied as their targets).
-- The native addon currently ships macOS (Darwin) and generic POSIX paths; the
-  clone fast path is macOS/APFS only and falls back automatically elsewhere.
+- The native addon supports macOS (POSIX + APFS clonefile fast path), Linux
+  (POSIX) and Windows (Win32); the clone fast path is macOS-only and falls
+  back to the chunked copy loop automatically elsewhere.

@@ -15,6 +15,15 @@ export interface WalkEntry {
 
 export type WalkMap = Map<string, WalkEntry>;
 
+/** Lock file written at a destination root while a sync owns it. */
+export const LOCK_FILE = '.mfs-lock';
+
+/** True for files the engine parks inside destinations (locks, temp copies). */
+export function isEngineFile(relPath: string): boolean {
+	const base = relPath.split('/').at(-1) ?? '';
+	return base === LOCK_FILE || base.includes('.mfs-tmp-');
+}
+
 /**
  * Walk a directory tree under the root and return a map of relative path ->
  * entry. Paths are filtered through the sync set's filters. Directories are

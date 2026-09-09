@@ -18,6 +18,8 @@ import { randomUUID } from 'node:crypto';
 import type { ComparePlan, DestProgress, ErrorPolicy, PendingConfirm, SyncEvent, SyncSet } from '$lib/types';
 import { absPath } from './paths';
 import { compareSet } from './compare';
+import { LOCK_FILE } from './walker';
+import { RunLogger, cleanupOldLogs } from './logger';
 import { copyFile, makeDirs, renameFile, setTimes, unlinkFile } from './native';
 
 /** Test/dev escape hatch to force the chunked copy loop (disables clonefile). */
@@ -46,6 +48,19 @@ interface DestRun {
 	stopped: boolean;
 	tempFiles: Set<string>;
 	pendingConfirm: PendingConfirm | null;
+	/** Semaphore lock file path for this destination, held while syncing. */
+	lockPath: string | null;
+	/** Interval that touches the lock file every 5 seconds. */
+	lockToucher: ReturnType<typeof setInterval> | null;
+}
+
+/** The lock holder must touch the file within this window to stay alive. */
+const LOCK_STALE_MS = 10_000;
+/** How often the lock file is touched while a sync owns it. */
+const LOCK_TOUCH_MS = 5_000;
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((r) => setTimeout(r, ms));
 }
 
 class RunState {
@@ -165,7 +180,9 @@ class RunState {
 				ignoreErrors: false,
 				stopped: false,
 				tempFiles: new Set(),
-				pendingConfirm: null
+				pendingConfirm: null,
+				lockPath: null,
+				lockToucher: null
 			});
 		}
 
@@ -188,10 +205,18 @@ class RunState {
 			this.emitDestDone(d);
 			return;
 		}
-		this.setProgress(d, { status: 'running' });
 
 		const destRootAbs = absPath(d.destRel);
 		const srcRootAbs = absPath(this.plan.source);
+
+		// Semaphore: acquire this destination's lock file (only one active sync
+		// may target a given destination directory).
+		const acquired = await this.acquireLock(d);
+		if (!acquired) {
+			this.setProgress(d, { status: 'stopped' });
+			this.emitDestDone(d);
+			return;
+		}
 
 		try {
 			// 1. Create missing directories.
@@ -227,7 +252,7 @@ class RunState {
 						relPath,
 						message: 'destination already up to date'
 					});
-					this.emitFileDone(d);
+					this.emitFileDone(d, relPath);
 					continue;
 				}
 
@@ -281,7 +306,7 @@ class RunState {
 
 				d.progress.filesDone += 1;
 				this.setProgress(d, { currentFile: null, currentFileBytes: 0, currentFileSize: 0 });
-				this.emitFileDone(d);
+				this.emitFileDone(d, relPath);
 			}
 
 			// 3. Deletions.
@@ -291,7 +316,7 @@ class RunState {
 					unlinkFile(path.join(destRootAbs, relPath));
 					d.progress.filesDone += 1;
 					this.emit({ type: 'file-deleted', destId: d.destId, relPath });
-					this.emitFileDone(d);
+					this.emitFileDone(d, relPath);
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
 					const handled = await this.handleError(d, relPath, message);
@@ -306,6 +331,8 @@ class RunState {
 			this.setProgress(d, { status: 'stopped-error', message });
 			this.emitDestDone(d, message);
 			return;
+		} finally {
+			this.releaseLock(d);
 		}
 
 		this.removeTemps(d);
@@ -318,10 +345,117 @@ class RunState {
 		}
 	}
 
-	private emitFileDone(d: DestRun): void {
+	//
+	// Destination lock (semaphore) - one active sync per destination directory.
+	// The lock is a small JSON file at the destination root, touched every 5s
+	// by the owning sync. A sync that finds an existing lock waits 10 seconds;
+	// if the lock was not touched during that window it is considered stale,
+	// removed, and replaced with our own lock.
+	//
+
+	private async acquireLock(d: DestRun): Promise<boolean> {
+		const lockPath = path.join(absPath(d.destRel), LOCK_FILE);
+		while (!d.stopped) {
+			let mtime: number | null = null;
+			try {
+				mtime = (await fs.stat(lockPath)).mtimeMs;
+			} catch {
+				mtime = null; // no lock file
+			}
+			if (mtime === null) break; // free - take it below
+
+			// Somebody owns this destination. Report and watch the lock for
+			// LOCK_STALE_MS to see whether it is still being touched.
+			const message = `Another sync targetting ${d.destName} in progress. Waiting 10 seconds to see if lock file is stale.`;
+			this.setProgress(d, { status: 'waiting', currentFile: null, message });
+			this.emit({ type: 'log', destId: d.destId, message });
+
+			const startedAt = Date.now();
+			let touched = false;
+			let gone = false;
+			while (!d.stopped && Date.now() - startedAt < LOCK_STALE_MS) {
+				await sleep(500);
+				let current: number | null = null;
+				try {
+					current = (await fs.stat(lockPath)).mtimeMs;
+				} catch {
+					current = null;
+				}
+				if (current === null) {
+					gone = true; // the other sync finished and released
+					break;
+				}
+				if (current !== mtime) {
+					touched = true; // still alive
+					mtime = current;
+				}
+			}
+			if (gone) break;
+			if (d.stopped) return false;
+			if (!touched && Date.now() - mtime >= LOCK_STALE_MS) {
+				this.emit({
+					type: 'log',
+				destId: d.destId,
+					message: `Lock for ${d.destName} is stale - removing it and proceeding.`
+				});
+				try {
+					unlinkFile(lockPath);
+				} catch {
+					/* it will be replaced below regardless */
+				}
+				break;
+			}
+			// Still alive - keep waiting (next loop re-reports).
+		}
+		if (d.stopped) return false;
+
+		// The destination root may not exist yet - create it so the lock file
+		// has a place to live (missing roots are normal for fresh destinations).
+		makeDirs(absPath(d.destRel));
+
+		// Write our lock and keep it fresh while this destination syncs.
+		const info = {
+			app: 'MetFileSync',
+			runId: this.runId,
+			destId: d.destId,
+			destName: d.destName,
+			pid: process.pid,
+			startedAt: Date.now()
+		};
+		await fs.writeFile(lockPath, JSON.stringify(info), 'utf8').catch(() => undefined);
+		d.lockPath = lockPath;
+		d.lockToucher = setInterval(() => this.touchLock(d), LOCK_TOUCH_MS);
+		this.touchLock(d);
+		this.setProgress(d, { status: 'running', currentFile: null, message: null });
+		return true;
+	}
+
+	private touchLock(d: DestRun): void {
+		if (!d.lockPath) return;
+		const now = new Date();
+		void fs.utimes(d.lockPath, now, now).catch(() => undefined);
+	}
+
+	private releaseLock(d: DestRun): void {
+		if (d.lockToucher) {
+			clearInterval(d.lockToucher);
+			d.lockToucher = null;
+		}
+		if (d.lockPath) {
+			try {
+				unlinkFile(d.lockPath);
+			} catch {
+				/* best effort */
+			}
+			d.lockPath = null;
+		}
+	}
+
+	private emitFileDone(d: DestRun, relPath?: string): void {
 		this.emit({
 			type: 'file-done',
 			destId: d.destId,
+			relPath,
 			filesDone: d.progress.filesDone,
 			filesTotal: d.progress.filesTotal,
 			copiedBytes: d.progress.copiedBytes,
@@ -535,9 +669,24 @@ class SyncManager {
 		}
 		const run = new RunState(this, plan, selection, errorPolicy);
 		this.runs.set(plan.setId, run);
-		void run.execute().finally(() => {
-			this.runs.delete(plan.setId);
+
+		// Log everything this run does to a per-run log file.
+		void cleanupOldLogs();
+		const logger = new RunLogger(run.runId, plan.setId, plan.setName);
+		const unsubscribeLogger = this.subscribe((e) => {
+			if (e.runId === run.runId) {
+				logger.handleEvent(e);
+			}
 		});
+
+		void run
+			.execute()
+			.finally(() => {
+				this.runs.delete(plan.setId);
+				unsubscribeLogger();
+				return logger.close();
+			})
+			.catch(() => undefined); // execute() never rejects; defensive
 		return run.runId;
 	}
 

@@ -1,10 +1,6 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { Settings } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Separator } from '$lib/components/ui/separator';
@@ -20,7 +16,18 @@
 		return () => clearInterval(ticker);
 	});
 
-	const onSettings = $derived(page.url.pathname.startsWith('/settings'));
+	function onSetChange(v: string): void {
+		if (v === '__new__') {
+			app.beginNewSet();
+			return;
+		}
+		app.selectSet(v || null);
+	}
+
+	const triggerName = $derived(
+		app.activeSet?.name ??
+			(app.draft && !app.activeSet ? `New: ${app.draft.name}` : '— no sync set —')
+	);
 </script>
 
 <div class="flex h-screen flex-col overflow-hidden">
@@ -28,18 +35,17 @@
 	<header class="flex h-11 shrink-0 items-center gap-3 border-b px-3">
 		<h1 class="text-sm font-semibold tracking-tight">MetFileSync</h1>
 		<Separator orientation="vertical" class="h-5" />
-		<Select.Root
-			type="single"
-			value={app.activeSetId ?? ''}
-			onValueChange={(v) => app.selectSet(v || null)}
-		>
+		<span class="text-xs text-muted-foreground">Sync Set:</span>
+		<Select.Root type="single" value={app.activeSetId ?? ''} onValueChange={onSetChange}>
 			<Select.Trigger class="h-7 w-56 text-xs">
-				{app.activeSet?.name ?? '— no sync set —'}
+				{triggerName}
 			</Select.Trigger>
 			<Select.Content class="text-xs">
 				{#each app.sets as set (set.id)}
 					<Select.Item value={set.id} label={set.name} />
 				{/each}
+				<Select.Separator />
+				<Select.Item value="__new__">Create New SyncSet...</Select.Item>
 			</Select.Content>
 		</Select.Root>
 
@@ -60,15 +66,6 @@
 			{#if app.running}
 				<Badge variant="secondary" class="h-5 text-[9px]">sync running</Badge>
 			{/if}
-			<Button
-				variant="ghost"
-				size="sm"
-				class="size-7 p-1.5"
-				title={onSettings ? 'Back to sync' : 'Sync set settings'}
-				onclick={() => goto(onSettings ? '/' : '/settings')}
-			>
-				<Settings class="size-4" />
-			</Button>
 		</div>
 	</header>
 
