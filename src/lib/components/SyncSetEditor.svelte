@@ -1,13 +1,5 @@
 <script lang="ts">
-	import {
-		Plus,
-		Copy,
-		Trash2,
-		Download,
-		Upload,
-		FolderOpen,
-		X
-	} from '@lucide/svelte';
+	import { Plus, FolderOpen, X } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -15,7 +7,6 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Separator } from '$lib/components/ui/separator';
-	import { Badge } from '$lib/components/ui/badge';
 	import PathPicker from './PathPicker.svelte';
 	import { app } from '$lib/state.svelte';
 	import type { DestinationConfig } from '$lib/types';
@@ -29,7 +20,6 @@
 
 	let pickerOpen = $state(false);
 	let pickerTarget = $state<'source' | { id: string }>('source');
-	let importInput = $state<HTMLInputElement | null>(null);
 
 	const draft = $derived(app.draft);
 
@@ -61,12 +51,6 @@
 		draft.destinations = draft.destinations.filter((d) => d.id !== dest.id);
 	}
 
-	async function onImport(e: Event): Promise<void> {
-		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (file) await app.importSet(file);
-		input.value = '';
-	}
 </script>
 
 <div class="flex flex-col gap-3 text-xs">
@@ -247,50 +231,6 @@
 		
 			</div>
 		</div>
-
-		<Separator />
-
-		<!-- Actions -->
-				<div class="flex flex-wrap gap-1.5">
-					<Button
-						variant="outline"
-						size="sm"
-						class="h-7"
-						onclick={() => app.duplicateSet()}
-						title="Duplicate this sync set as a new one"
-						disabled={!app.draft}
-					>
-						<Copy class="size-3.5" /> Copy
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						class="h-7"
-						onclick={() => {
-							if (app.activeSetId && confirm(`Delete sync set "${draft.name}"?`)) void app.deleteActiveSet();
-						}}
-						disabled={!app.activeSetId || app.draftIsNew}
-						title={app.draftIsNew ? 'Save the set first (this copy is not stored yet)' : 'Delete the saved sync set'}
-					>
-						<Trash2 class="size-3.5" /> Delete
-					</Button>
-					<Button variant="outline" size="sm" class="h-7" onclick={() => app.exportActiveSet()}>
-						<Download class="size-3.5" /> Export
-					</Button>
-					<Button variant="outline" size="sm" class="h-7" onclick={() => importInput?.click()}>
-						<Upload class="size-3.5" /> Import
-					</Button>
-					<input
-						bind:this={importInput}
-						type="file"
-						accept="application/json,.json"
-						class="hidden"
-						onchange={(e) => void onImport(e)}
-					/>
-					{#if app.dirty}
-						<Badge variant="secondary" class="ml-auto">unsaved changes</Badge>
-					{/if}
-				</div>
 	{/if}
 </div>
 

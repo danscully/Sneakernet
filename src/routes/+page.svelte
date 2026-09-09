@@ -9,7 +9,11 @@
 		PanelLeftClose,
 		PanelLeftOpen,
 		RefreshCcw,
-		HardDriveDownload
+		HardDriveDownload,
+		Copy,
+		Trash2,
+		Download,
+		Upload
 	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Tabs from '$lib/components/ui/tabs';
@@ -49,6 +53,15 @@
 	/** Save the sync set and close the settings modal (stays open on failure). */
 	async function saveAndClose(): Promise<void> {
 		if (await app.saveDraft()) app.settingsOpen = false;
+	}
+
+	let importInput = $state<HTMLInputElement | null>(null);
+
+	async function onImport(e: Event): Promise<void> {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (file) await app.importSet(file);
+		input.value = '';
 	}
 
 	/** The In Progress tab exists only while a run is active or just finished. */
@@ -329,27 +342,88 @@
 			</div>
 		</ScrollArea>
 		<Dialog.Footer
-			class="m-0 shrink-0 flex-row gap-2 border-t bg-muted/30 p-3 sm:justify-end"
+			class="m-0 flex shrink-0 flex-row items-center justify-between gap-2 border-t bg-muted/30 p-3 sm:justify-between"
 		>
-			<Button
-				variant="outline"
-				size="sm"
-				class="h-7"
-				onclick={() => {
-					app.discardDraft();
-					app.settingsOpen = false;
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				size="sm"
-				class="h-7"
-				onclick={() => void saveAndClose()}
-				disabled={!app.canSave}
-			>
-				Save
-			</Button>
+			<!-- Set actions, left-justified -->
+			<div class="flex flex-wrap items-center gap-1.5">
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-7"
+					onclick={() => app.duplicateSet()}
+					title="Duplicate this sync set as a new one"
+					disabled={!app.draft}
+				>
+					<Copy class="size-3.5" /> Copy
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-7"
+					onclick={() => {
+						if (app.activeSetId && confirm(`Delete sync set "${app.draft?.name}"?`)) {
+							void app.deleteActiveSet();
+						}
+					}}
+					disabled={!app.activeSetId || app.draftIsNew}
+					title={app.draftIsNew
+						? 'Save the set first (this copy is not stored yet)'
+						: 'Delete the saved sync set'}
+				>
+					<Trash2 class="size-3.5" /> Delete
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-7"
+					onclick={() => app.exportActiveSet()}
+					title="Export this sync set as a JSON file"
+					disabled={!app.draft}
+				>
+					<Download class="size-3.5" /> Export
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-7"
+					onclick={() => importInput?.click()}
+					title="Import a sync set from a JSON file"
+				>
+					<Upload class="size-3.5" /> Import
+				</Button>
+				<input
+					bind:this={importInput}
+					type="file"
+					accept="application/json,.json"
+					class="hidden"
+					onchange={(e) => void onImport(e)}
+				/>
+				{#if app.dirty}
+					<Badge variant="secondary" class="text-[9px]">unsaved changes</Badge>
+				{/if}
+			</div>
+			<!-- Cancel / Save, right-justified -->
+			<div class="flex gap-2">
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-7"
+					onclick={() => {
+						app.discardDraft();
+						app.settingsOpen = false;
+					}}
+				>
+					Cancel
+				</Button>
+				<Button
+					size="sm"
+					class="h-7"
+					onclick={() => void saveAndClose()}
+					disabled={!app.canSave}
+				>
+					Save
+				</Button>
+			</div>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
