@@ -4,7 +4,10 @@
 	import * as Select from '$lib/components/ui/select';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Separator } from '$lib/components/ui/separator';
+	import { Button } from '$lib/components/ui/button';
+	import { MonitorCog } from '@lucide/svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import DesktopSettingsDialog from '$lib/components/DesktopSettingsDialog.svelte';
 	import { app } from '$lib/state.svelte';
 
 	let { children } = $props();
@@ -31,10 +34,14 @@
 </script>
 
 <div class="flex h-screen flex-col overflow-hidden">
-	<!-- Shared header -->
+	<!-- Shared header. In the desktop app the window title already says
+		"MetFileSync", so the in-window H1 is hidden there; remote browser
+		users still see it. -->
 	<header class="flex h-11 shrink-0 items-center gap-3 border-b px-3">
-		<h1 class="text-sm font-semibold tracking-tight">MetFileSync</h1>
-		<Separator orientation="vertical" class="h-5" />
+		{#if !app.desktopHost}
+			<h1 class="text-sm font-semibold tracking-tight">MetFileSync</h1>
+			<Separator orientation="vertical" class="h-5" />
+		{/if}
 		<span class="text-xs text-muted-foreground">Sync Set:</span>
 		<Select.Root type="single" value={app.activeSetId ?? ''} onValueChange={onSetChange}>
 			<Select.Trigger class="h-7 w-56 text-xs">
@@ -66,6 +73,19 @@
 			{#if app.running}
 				<Badge variant="secondary" class="h-5 text-[9px]">sync running</Badge>
 			{/if}
+			<!-- Desktop settings: only the desktop app's own webview can see or
+				use this (the endpoints are loopback-only). -->
+			{#if app.desktopHost}
+				<Button
+					variant="ghost"
+					size="sm"
+					class="h-7 w-7 p-0 text-muted-foreground"
+					onclick={() => (app.desktopSettingsOpen = true)}
+					title="Desktop settings (root directory, network access)"
+				>
+					<MonitorCog class="size-4" />
+				</Button>
+			{/if}
 		</div>
 	</header>
 
@@ -75,3 +95,4 @@
 </div>
 
 <ConfirmDialog />
+<DesktopSettingsDialog />

@@ -4,15 +4,21 @@
 // (resources/server) as a hidden child process, waits until it accepts
 // connections, then navigates the main webview to the local server URL.
 // Per-user data lives under the OS application-support directory:
-//   <app-data>/sync-root   - the sync root (METFILESYNC_ROOT)
-//   <app-data>/app-data    - sync sets / logs (METFILESYNC_DATA)
+//   <app-data>/sync-root     - default sync root (METFILESYNC_ROOT)
+//   <app-data>/app-data      - sync sets / logs (METFILESYNC_DATA)
+//   <app-data>/desktop-settings.json - this app's settings
 // Closing the window hides to the tray (syncs keep running); Quit from the
 // tray stops the server and exits.
 //
-// LAN sharing (opt-in, off by default): the tray menu can expose the server
-// to other machines on the local network. When enabled, the server binds
-// 0.0.0.0 on a stable port and requires an access token (shareable link);
-// when disabled, it binds 127.0.0.1 only.
+// LAN sharing (opt-in, off by default): configured in the in-app Desktop
+// Settings dialog (loopback-only endpoints in the web app). When enabled,
+// the server binds 0.0.0.0 on a stable port and requires an access token
+// (shareable link); when disabled, it binds 127.0.0.1 only.
+//
+// The server gets the settings file path via METFILESYNC_DESKTOP_SETTINGS
+// and writes changes there (from the Desktop Settings dialog). A watcher
+// thread polls the file; whenever its contents change, the shell restarts
+// the server child with the new binding/root and re-navigates the window.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -25,9 +31,9 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem},
+    menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Manager, RunEvent, Wry,
+    AppHandle, Manager, RunEvent,
 };
 
 /// Shared shell state.
@@ -37,12 +43,15 @@ struct AppState {
     port: Mutex<u16>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DesktopSettings {
     lan_sharing: bool,
     lan_port: u16,
     access_token: String,
+    /// Absolute path of the sync root; None = <app-data>/sync-root.
+    #[serde(default)]
+    root_directory: Option<String>,
 }
 
 impl Default for DesktopSettings {
@@ -51,6 +60,7 @@ impl Default for DesktopSettings {
             lan_sharing: false,
             lan_port: 8787,
             access_token: String::new(),
+            root_directory: None,
         }
     }
 }
@@ -129,6 +139,18 @@ fn save_settings(app_data: &Path, settings: &DesktopSettings) -> std::io::Result
     std::fs::write(settings_path(app_data), raw)
 }
 
+/// The effective sync root for the given settings (created if missing).
+fn effective_root(app_data: &Path, settings: &DesktopSettings) -> PathBuf {
+    let root = settings
+        .root_directory
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| app_data.join("sync-root"));
+    let _ = std::fs::create_dir_all(&root);
+    root
+}
+
 /// The full access link remote users open (only meaningful when sharing).
 fn lan_url(settings: &DesktopSettings, port: u16) -> String {
     let ip = lan_ip().unwrap_or(Ipv4Addr::LOCALHOST);
@@ -156,7 +178,7 @@ fn spawn_server(handle: &AppHandle) {
         .app_data_dir()
         .expect("cannot resolve the app data directory");
 
-    // Stop any previous instance (a toggle restarts the server).
+    // Stop any previous instance (settings changes restart the server).
     if let Some(mut previous) = state.child.lock().unwrap().take() {
         let _ = previous.kill();
         let _ = previous.wait();
@@ -191,9 +213,8 @@ fn spawn_server(handle: &AppHandle) {
     let server_dir = resources.join("server");
     let wrapper = server_dir.join("server-wrapper.mjs");
     let addon = resources.join("native").join("metfilesync_native.node");
-    let sync_root = app_data.join("sync-root");
+    let sync_root = effective_root(&app_data, &settings);
     let server_data = app_data.join("app-data");
-    let _ = std::fs::create_dir_all(&sync_root);
     let _ = std::fs::create_dir_all(&server_data);
 
     let mut cmd = Command::new(&node);
@@ -206,6 +227,9 @@ fn spawn_server(handle: &AppHandle) {
         .env("METFILESYNC_ROOT", &sync_root)
         .env("METFILESYNC_DATA", &server_data)
         .env("METFILESYNC_NATIVE", &addon)
+        // Lets the server read/write desktop settings (Desktop Settings
+        // dialog) and know it is running under this shell.
+        .env("METFILESYNC_DESKTOP_SETTINGS", settings_path(&app_data))
         .current_dir(&server_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -265,42 +289,29 @@ fn spawn_server(handle: &AppHandle) {
     });
 }
 
-// ------------------------------------------------------------------- tray  --
+// ----------------------------------------------------------- settings watch --
 
-fn build_tray_menu(handle: &AppHandle, settings: &DesktopSettings) -> tauri::Result<Menu<Wry>> {
-    let show = MenuItem::with_id(handle, "show", "Open MetFileSync", true, None::<&str>)?;
-    let lan = CheckMenuItem::with_id(
-        handle,
-        "lan",
-        "Allow access from other devices",
-        true,
-        settings.lan_sharing,
-        None::<&str>,
-    )?;
-    let copy_link = MenuItem::with_id(
-        handle,
-        "copy_link",
-        "Copy network access link",
-        settings.lan_sharing,
-        None::<&str>,
-    )?;
-    let quit = MenuItem::with_id(
-        handle,
-        "quit",
-        "Quit (stops running syncs)",
-        true,
-        None::<&str>,
-    )?;
-    Menu::with_items(handle, &[&show, &lan, &copy_link, &quit])
-}
-
-/// (Re)build the tray menu to reflect the current settings.
-fn refresh_tray(handle: &AppHandle) {
-    let settings = handle.state::<AppState>().settings.lock().unwrap().clone();
-    let menu = build_tray_menu(handle, &settings).expect("cannot build the tray menu");
-    if let Some(tray) = handle.tray_by_id("tray") {
-        let _ = tray.set_menu(Some(menu));
-    }
+/// Watch `desktop-settings.json` for changes written by the server (the
+/// in-app Desktop Settings dialog) and restart the server on any change.
+fn watch_settings(handle: AppHandle) {
+    thread::spawn(move || {
+        let app_data = handle
+            .path()
+            .app_data_dir()
+            .expect("cannot resolve the app data directory");
+        let mut last = load_settings(&app_data);
+        loop {
+            thread::sleep(Duration::from_secs(1));
+            let current = load_settings(&app_data);
+            if current == last {
+                continue;
+            }
+            println!("[shell] desktop settings changed - restarting the server");
+            *handle.state::<AppState>().settings.lock().unwrap() = current.clone();
+            last = current;
+            spawn_server(&handle);
+        }
+    });
 }
 
 // -------------------------------------------------------------------- main --
@@ -315,7 +326,6 @@ fn main() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -332,7 +342,17 @@ fn main() {
                 if settings.lan_sharing { "on" } else { "off" }
             );
 
-            let menu = build_tray_menu(&handle, &settings)?;
+            // LAN sharing and the sync root are managed from the in-app
+            // Desktop Settings dialog; the tray just opens/quits the app.
+            let show = MenuItem::with_id(&handle, "show", "Open MetFileSync", true, None::<&str>)?;
+            let quit = MenuItem::with_id(
+                &handle,
+                "quit",
+                "Quit (stops running syncs)",
+                true,
+                None::<&str>,
+            )?;
+            let menu = Menu::with_items(&handle, &[&show, &quit])?;
             TrayIconBuilder::with_id("tray")
                 .icon(handle.default_window_icon().unwrap().clone())
                 .tooltip("MetFileSync")
@@ -344,36 +364,6 @@ fn main() {
                             let _ = window.set_focus();
                         }
                     }
-                    "lan" => {
-                        // Toggle LAN sharing: persist the setting and restart
-                        // the server with the new binding.
-                        let app_data = app
-                            .path()
-                            .app_data_dir()
-                            .expect("cannot resolve the app data directory");
-                        let state = app.state::<AppState>();
-                        let mut settings = state.settings.lock().unwrap();
-                        settings.lan_sharing = !settings.lan_sharing;
-                        let _ = save_settings(&app_data, &settings);
-                        println!(
-                            "[shell] LAN sharing {}",
-                            if settings.lan_sharing { "enabled" } else { "disabled" }
-                        );
-                        drop(settings);
-                        spawn_server(app);
-                        refresh_tray(app);
-                    }
-                    "copy_link" => {
-                        use tauri_plugin_clipboard_manager::ClipboardExt;
-                        let state = app.state::<AppState>();
-                        let settings = state.settings.lock().unwrap().clone();
-                        let port = *state.port.lock().unwrap();
-                        let link = lan_url(&settings, port);
-                        if settings.lan_sharing {
-                            let _ = app.clipboard().write_text(link.clone());
-                            println!("[shell] network access link copied: {link}");
-                        }
-                    }
                     "quit" => {
                         app.exit(0);
                     }
@@ -382,6 +372,7 @@ fn main() {
                 .build(&handle)?;
 
             spawn_server(&handle);
+            watch_settings(handle);
 
             Ok(())
         })

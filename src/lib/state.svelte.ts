@@ -76,6 +76,16 @@ export function newSyncSet(): SyncSet {
 	};
 }
 
+/** Settings shown in the desktop-app-only settings dialog. */
+export interface DesktopSettingsView {
+	lanSharing: boolean;
+	lanPort: number;
+	rootDirectory: string | null;
+	/** The effective sync root (shell default when rootDirectory is null). */
+	root: string;
+	lanUrl: string | null;
+}
+
 export class AppState {
 	sets: SyncSet[] = $state([]);
 	activeSetId: string | null = $state(null);
@@ -152,8 +162,14 @@ export class AppState {
 	/** Full LAN access link when the server is in sharing mode, else null. */
 	lanUrl: string | null = $state(null);
 
+	/** True when this client is the desktop app's own webview. */
+	desktopHost = $state(false);
+
 	/** The sync set settings modal (editor lives on the main page now). */
 	settingsOpen = $state(false);
+
+	/** The desktop-app settings modal (LAN sharing + sync root). */
+	desktopSettingsOpen = $state(false);
 
 	/** Pre-sync free-space warning awaiting user confirmation. */
 	spaceWarning: DestSpaceWarning[] | null = $state(null);
@@ -177,9 +193,46 @@ export class AppState {
 	async loadRoot(): Promise<void> {
 		const res = await fetch('/api/config');
 		if (!res.ok) return;
-		const data = (await res.json()) as { root: string; lanUrl?: string | null };
+		const data = (await res.json()) as {
+			root: string;
+			lanUrl?: string | null;
+			desktopHost?: boolean;
+		};
 		this.rootPath = data.root;
 		this.lanUrl = data.lanUrl ?? null;
+		this.desktopHost = data.desktopHost ?? false;
+	}
+
+	// --- Desktop app settings (Tauri webview only) ---------------------------
+
+	/** Fetch the current desktop settings (null when unavailable). */
+	async loadDesktopSettings(): Promise<DesktopSettingsView | null> {
+		const res = await fetch('/api/desktop/settings');
+		if (!res.ok) return null;
+		return (await res.json()) as DesktopSettingsView;
+	}
+
+	/**
+	 * Persist desktop settings. The shell picks up the file change and
+	 * restarts the server (which re-navigates the webview). Returns true on
+	 * success; failures surface as a toast.
+	 */
+	async saveDesktopSettings(update: {
+		lanSharing?: boolean;
+		lanPort?: number;
+		rootDirectory?: string | null;
+	}): Promise<boolean> {
+		const res = await fetch('/api/desktop/settings', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(update)
+		});
+		if (!res.ok) {
+			const data = (await res.json().catch(() => ({}))) as { error?: string };
+			this.showToast('error', data.error ?? 'could not save the settings');
+			return false;
+		}
+		return true;
 	}
 
 	get dirty(): boolean {
@@ -254,20 +307,13 @@ export class AppState {
 		this.selection = {};
 		this.resetRun();
 		if (id) {
-			void this.restorePlan();
+			// A fresh set selection always triggers a silent re-compare, so the
+			// File List tab shows current data without a manual click.
+			void this.compare(true);
 			this.connectStream(id);
 		} else {
 			this.closeStream();
 		}
-	}
-
-	async restorePlan(): Promise<void> {
-		const id = this.activeSetId;
-		if (!id) return;
-		const res = await fetch(`/api/compare?setId=${encodeURIComponent(id)}`);
-		if (!res.ok) return;
-		const data = (await res.json()) as { plan: ComparePlan };
-		if (this.activeSetId === id) this.setPlan(data.plan);
 	}
 
 	async saveDraft(): Promise<boolean> {
@@ -356,21 +402,26 @@ export class AppState {
 		this.selection = selection;
 	}
 
-	async compare(): Promise<void> {
+	/**
+	 * Run a compare. With `auto` = true (first load / set switch) it stays
+	 * completely silent when there is nothing to do; manual runs surface the
+	 * reason as a toast instead.
+	 */
+	async compare(auto = false): Promise<void> {
 		const id = this.activeSetId;
 		if (!id || this.comparing) return;
+		if (this.dirty) {
+			if (!auto) this.showToast('error', 'Save the sync set before comparing');
+			return;
+		}
+		if (this.running) {
+			if (!auto) this.showToast('error', 'A sync is running for this set');
+			return;
+		}
 		// A new compare invalidates the previous run's progress cards.
 		this.dests = {};
 		this.finishedAt = null;
 		this.spaceWarning = null;
-		if (this.dirty) {
-			this.showToast('error', 'Save the sync set before comparing');
-			return;
-		}
-		if (this.running) {
-			this.showToast('error', 'A sync is running for this set');
-			return;
-		}
 		this.comparing = true;
 		try {
 			const res = await fetch('/api/compare', {

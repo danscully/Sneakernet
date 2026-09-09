@@ -47,7 +47,7 @@
 
 	async function startSync(force = false): Promise<void> {
 		const started = await app.startSync(force);
-		if (started) tab = 'sync';
+		if (started) tab = 'status';
 	}
 
 	/** Save the sync set and close the settings modal (stays open on failure). */
@@ -63,12 +63,6 @@
 		if (file) await app.importSet(file);
 		input.value = '';
 	}
-
-	/** The In Progress tab exists only while a run is active or just finished. */
-	const showInProgress = $derived(app.running || Object.keys(app.dests).length > 0);
-	$effect(() => {
-		if (tab === 'sync' && !showInProgress) tab = 'filelist';
-	});
 
 	/** Load logs whenever the Logs tab becomes visible. */
 	$effect(() => {
@@ -110,13 +104,23 @@
 		<div class="flex h-11 shrink-0 items-center gap-2 border-b px-3">
 			<Tabs.List class="h-7">
 				<Tabs.Trigger value="filelist" class="h-7 px-3 text-xs">File List</Tabs.Trigger>
-				{#if showInProgress}
-					<Tabs.Trigger value="sync" class="h-7 px-3 text-xs">In Progress</Tabs.Trigger>
-				{/if}
+				<Tabs.Trigger value="status" class="h-7 px-3 text-xs">Status</Tabs.Trigger>
 				<Tabs.Trigger value="logs" class="h-7 px-3 text-xs">Logs</Tabs.Trigger>
 			</Tabs.List>
 
-			<div class="ml-auto flex items-center gap-1.5">
+			<!-- Compare statistics, centered between the tabs and the buttons -->
+			{#if tab === 'filelist' && app.plan}
+				<span class="min-w-0 flex-1 truncate text-center text-[11px] text-muted-foreground">
+					{summary} · {app.selectedCount} selected · {formatBytes(app.selectedBytes)}
+					{#if app.selectedDeletes > 0}
+						· {app.selectedDeletes} deletions
+					{/if}
+				</span>
+			{:else}
+				<span class="flex-1"></span>
+			{/if}
+
+			<div class="flex shrink-0 items-center gap-1.5">
 				{#if tab === 'filelist'}
 					<Button
 						size="sm"
@@ -151,14 +155,6 @@
 					>
 						<Minus class="size-3.5" />
 					</Button>
-					{#if app.plan}
-						<span class="text-[11px] text-muted-foreground">
-							{summary} · {app.selectedCount} selected · {formatBytes(app.selectedBytes)}
-							{#if app.selectedDeletes > 0}
-								· {app.selectedDeletes} deletions
-							{/if}
-						</span>
-					{/if}
 					<Button
 						size="sm"
 						class="h-7 bg-emerald-600 text-white hover:bg-emerald-500 disabled:pointer-events-none disabled:opacity-50"
@@ -167,7 +163,7 @@
 					>
 						Sync Selected
 					</Button>
-				{:else if tab === 'sync'}
+				{:else if tab === 'status'}
 					<Button
 						variant="destructive"
 						size="sm"
@@ -238,7 +234,7 @@
 			{/if}
 		</Tabs.Content>
 
-		<Tabs.Content value="sync" class="min-h-0 flex-1 data-[state=active]:block">
+		<Tabs.Content value="status" class="min-h-0 flex-1 data-[state=active]:block">
 			{#if Object.keys(app.dests).length === 0}
 				<div class="flex h-full items-center justify-center text-xs text-muted-foreground">
 					No sync running.
@@ -335,7 +331,9 @@
 						aria-readonly="true"
 					/>
 					<p class="text-[10px] text-muted-foreground">
-						Configured via config.json or the METFILESYNC_ROOT environment variable on the server.
+						{app.desktopHost
+							? 'Change the root from the Desktop Settings dialog (cog/monitor icon in the header).'
+							: 'Configured via config.json or the METFILESYNC_ROOT environment variable on the server.'}
 					</p>
 				</div>
 				{#if app.lanUrl}
@@ -350,7 +348,7 @@
 						/>
 						<p class="text-[10px] text-muted-foreground">
 							Anyone on your network who opens this link can view and run syncs on this machine.
-							Share it only with people you trust; toggle sharing from the MetFileSync tray menu.
+							Share it only with people you trust; sharing is managed in the Desktop Settings dialog.
 						</p>
 					</div>
 				{/if}

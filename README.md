@@ -189,25 +189,34 @@ npm run desktop:build
 # -> desktop/src-tauri/target/release/bundle/{msi,nsis}/
 ```
 
-### LAN access for remote users (opt-in)
+### Desktop Settings (app only) & LAN access for remote users (opt-in)
 
-The embedded server binds **localhost only** by default. The tray menu offers
-**"Allow access from other devices"**:
+The embedded server binds **localhost only** by default. The **Desktop
+Settings** dialog — opened with the cog/monitor icon in the app window's
+header — manages the machine's settings:
 
-- when enabled, the server restarts bound to all interfaces on a stable port
-  (default **8787**; configurable via `lanPort` in
-  `<app-data>/desktop-settings.json`, with an automatic fallback if the port
-  is taken);
-- every request must present the **access token** (a persistent random token
-  generated on first run) — the UI and API accept `?token=...` once and then
-  exchange it for an `mfs_token` cookie, so remote users just open the
-  **access link**;
-- **"Copy network access link"** in the tray copies
-  `http://<lan-address>:8787/?token=<token>` to the clipboard, and the link is
-  also shown in the Sync Set settings dialog ("Network access");
-- toggling sharing restarts the server (it aborts any sync in flight —
-  leftover `.mfs-tmp-` files are ignored by future compares and overwritten
-  by the next sync).
+- **Root directory**: pick the sync root from any absolute path on disk (the
+  picker can browse anywhere; a directory picker also offers to create new
+  subdirectories when picking sources/destinations inside the root);
+- **Allow access from other devices**: when enabled, the server restarts
+  bound to all interfaces on a stable port (default **8787**, editable next
+  to the switch, with an automatic fallback if the port is taken);
+- **Access link**: `http://<lan-address>:<port>/?token=<token>` is shown in
+  the dialog (selectable to copy) and in the Sync Set settings dialog —
+  every request must present the **access token** (a persistent random token
+  generated on first run); the UI and API accept `?token=...` once and then
+  exchange it for an `mfs_token` cookie, so remote users just open the link;
+- **Apply** persists the settings to `<app-data>/desktop-settings.json`;
+  the shell watches that file and restarts the server within ~1s (applying
+  settings aborts any sync in flight — leftover `.mfs-tmp-` files are ignored
+  by future compares and overwritten by the next sync).
+
+The Desktop Settings dialog and its `/api/desktop/*` endpoints are visible
+and usable **only inside the app window** (loopback + desktop mode);
+remote users — even with the access link — get a 403 and cannot change the
+root, the port, or LAN sharing. Remote users also see the "MetFileSync"
+page title, which is hidden in the app window (the window title already
+shows it).
 
 Security notes: the link grants full control of syncs on the machine (same
 app, no per-user accounts) — share it only on networks and with people you
