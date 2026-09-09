@@ -338,6 +338,22 @@
 						Configured via config.json or the METFILESYNC_ROOT environment variable on the server.
 					</p>
 				</div>
+				{#if app.lanUrl}
+					<div class="grid gap-1.5">
+						<Label for="lan-url">Network access (currently enabled)</Label>
+						<Input
+							id="lan-url"
+							class="h-7 cursor-not-allowed font-mono text-xs opacity-90"
+							value={app.lanUrl}
+							disabled
+							aria-readonly="true"
+						/>
+						<p class="text-[10px] text-muted-foreground">
+							Anyone on your network who opens this link can view and run syncs on this machine.
+							Share it only with people you trust; toggle sharing from the MetFileSync tray menu.
+						</p>
+					</div>
+				{/if}
 				<SyncSetEditor />
 			</div>
 		</ScrollArea>

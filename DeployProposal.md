@@ -30,6 +30,11 @@ defaults to `<app-data>/sync-root`, configurable via `config.json`).
 Package the existing Node server + the UI as a desktop application using
 **Tauri** (preferred) or **Electron**:
 
+> LAN sharing is implemented as an opt-in feature of the Tauri shell: the
+> tray menu can expose the embedded server to the network on a stable port
+> (default 8787) behind a token-protected shareable access link. The server
+> binds localhost only when sharing is off.
+
 - The server runs as a **hidden background process** (sidecar) started by the
   shell; the UI opens in the shell's webview instead of the system browser
   (looks and behaves like a native app).

@@ -149,6 +149,9 @@ export class AppState {
 	/** Absolute path of the sync root (from the server deployment config). */
 	rootPath: string | null = $state(null);
 
+	/** Full LAN access link when the server is in sharing mode, else null. */
+	lanUrl: string | null = $state(null);
+
 	/** The sync set settings modal (editor lives on the main page now). */
 	settingsOpen = $state(false);
 
@@ -174,8 +177,9 @@ export class AppState {
 	async loadRoot(): Promise<void> {
 		const res = await fetch('/api/config');
 		if (!res.ok) return;
-		const data = (await res.json()) as { root: string };
+		const data = (await res.json()) as { root: string; lanUrl?: string | null };
 		this.rootPath = data.root;
+		this.lanUrl = data.lanUrl ?? null;
 	}
 
 	get dirty(): boolean {
