@@ -105,8 +105,7 @@ copyDir(serverBuild, path.join(resourcesDir, 'server'));
 // `dependencies` (SvelteKit externalizes them for adapter-node), so the app
 // must carry them. Install the exact production tree (no build tools, no
 // dev-only packages) into the bundled server dir via a throwaway staging
-// copy of the project manifest. Running from within the project keeps the
-// project's .npmrc (registry cache) in effect.
+// copy of the project manifest.
 const stageDir = path.join(root, 'desktop', '.node-modules-stage');
 fs.rmSync(stageDir, { recursive: true, force: true });
 fs.mkdirSync(stageDir, { recursive: true });
@@ -114,7 +113,11 @@ fs.copyFileSync(path.join(root, 'package.json'), path.join(stageDir, 'package.js
 fs.copyFileSync(path.join(root, 'package-lock.json'), path.join(stageDir, 'package-lock.json'));
 console.log('  server/node_modules/  <- npm ci --omit=dev (production tree)');
 execFileSync(
-	process.platform === 'win32' ? 'npm.cmd' : 'npm',
+	// Plain `npm` everywhere: on Windows npm is a .cmd shim, which Node
+	// (>= 20, CVE-2024-27980 hardening) refuses to spawn without a shell -
+	// `npm.cmd` with no shell dies with EINVAL. The args are static flags,
+	// so the shell layer on Windows is safe.
+	'npm',
 	[
 		'ci',
 		// Production packages only. --legacy-peer-deps skips npm's automatic
@@ -130,7 +133,7 @@ execFileSync(
 		'--no-fund',
 		'--no-progress'
 	],
-	{ cwd: stageDir, stdio: 'inherit' }
+	{ cwd: stageDir, stdio: 'inherit', shell: process.platform === 'win32' }
 );
 fs.rmSync(path.join(stageDir, 'node_modules', '.package-lock.json'), { force: true });
 // npm's .bin shims are broken symlink farms (their targets are not part of

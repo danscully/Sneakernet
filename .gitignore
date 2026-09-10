@@ -19,3 +19,6 @@ desktop/.node-cache/
 
 # Desktop bundling staging dir (pruned production node_modules)
 desktop/.node-modules-stage/
+
+# Local copies of GitHub Actions run logs
+github action logs/
