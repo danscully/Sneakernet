@@ -31,7 +31,7 @@ import { RunLogger, cleanupOldLogs } from './logger';
 import { copyFile, makeDirs, renameFile, setTimes, unlinkFile } from './native';
 
 /** Test/dev escape hatch to force the chunked copy loop (disables clonefile). */
-const NO_CLONE = process.env['METFILESYNC_NO_CLONE'] === '1';
+const NO_CLONE = process.env['SNEAKERNET_NO_CLONE'] === '1';
 
 export type ConfirmDecision = 'stop' | 'skip' | 'ignore-all' | 'copy-anyway';
 /** Selection map: relative path -> destination ids to sync. */
@@ -297,7 +297,7 @@ class RunState {
 				makeDirs(dirAbs);
 				const tempAbs = path.join(
 					dirAbs,
-					`.${path.basename(destAbs)}.mfs-tmp-${this.runId.slice(0, 8)}-${randomUUID().slice(0, 8)}`
+					`.${path.basename(destAbs)}.sneakernet-tmp-${this.runId.slice(0, 8)}-${randomUUID().slice(0, 8)}`
 				);
 				d.tempFiles.add(tempAbs);
 
@@ -451,7 +451,7 @@ class RunState {
 
 		// Write our lock and keep it fresh while this destination syncs.
 		const info = {
-			app: 'MetFileSync',
+			app: 'Sneakernet',
 			runId: this.runId,
 			destId: d.destId,
 			destName: d.destName,

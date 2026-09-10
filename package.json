@@ -1,9 +1,9 @@
 {
-	"name": "metfilesync",
+	"name": "sneakernet",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
-	"description": "MetFileSync - fast directory sync with native copy engine",
+	"description": "Sneakernet - fast directory sync with native copy engine",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "npm run build:native && vite build",

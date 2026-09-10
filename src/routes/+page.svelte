@@ -35,12 +35,12 @@
 	let sidebarOpen = $state(true);
 
 	onMount(() => {
-		sidebarOpen = localStorage.getItem('mfs.sidebar') !== 'collapsed';
+		sidebarOpen = localStorage.getItem('sneakernet.sidebar') !== 'collapsed';
 	});
 
 	function toggleSidebar(): void {
 		sidebarOpen = !sidebarOpen;
-		localStorage.setItem('mfs.sidebar', sidebarOpen ? 'open' : 'collapsed');
+		localStorage.setItem('sneakernet.sidebar', sidebarOpen ? 'open' : 'collapsed');
 	}
 
 	async function compare(): Promise<void> {
@@ -375,7 +375,7 @@
 					<p class="text-[10px] text-muted-foreground">
 						{app.desktopHost
 							? 'Change the root from the Desktop Settings dialog (cog/monitor icon in the header).'
-							: 'Configured via config.json or the METFILESYNC_ROOT environment variable on the server.'}
+							: 'Configured via config.json or the SNEAKERNET_ROOT environment variable on the server.'}
 					</p>
 				</div>
 				{#if app.lanUrl}

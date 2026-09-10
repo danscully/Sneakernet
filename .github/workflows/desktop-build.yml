@@ -1,6 +1,6 @@
 name: Desktop builds (Tauri)
 
-# Builds the MetFileSync desktop app (Option A in DeployProposal.md) for
+# Builds the Sneakernet desktop app (Option A in DeployProposal.md) for
 # distribution: macOS .app/.dmg (arm64) and Windows MSI/NSIS installers (x64).
 # Artifacts are uploaded on every run; tag pushes additionally draft a release.
 
@@ -21,11 +21,11 @@ jobs:
         include:
           - os: macos-latest # Apple Silicon
             targets: ''
-            artifact: MetFileSync-macOS-arm64
+            artifact: Sneakernet-macOS-arm64
             bundles: dmg
           - os: windows-latest
             targets: ''
-            artifact: MetFileSync-Windows-x64
+            artifact: Sneakernet-Windows-x64
             bundles: msi,nsis
     runs-on: ${{ matrix.os }}
     steps:

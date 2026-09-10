@@ -33,7 +33,7 @@ export const GET: RequestHandler = async (event) => {
 		// The effective root (shell default when rootDirectory is null).
 		root: ROOT,
 		// Set by the desktop shell when LAN sharing is enabled.
-		lanUrl: process.env['METFILESYNC_LAN_URL'] ?? null
+		lanUrl: process.env['SNEAKERNET_LAN_URL'] ?? null
 	});
 };
 

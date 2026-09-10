@@ -1,7 +1,7 @@
 [package]
-name = "metfilesync"
+name = "sneakernet"
 version = "0.1.0"
-description = "MetFileSync desktop shell - launches and supervises the local sync server"
+description = "Sneakernet desktop shell - launches and supervises the local sync server"
 edition = "2021"
 
 [build-dependencies]

@@ -345,7 +345,7 @@ export class AppState {
 		const data = (await res.json()) as { sets: SyncSet[] };
 		this.sets = data.sets;
 		if (this.activeSetId === null || !this.sets.some((s) => s.id === this.activeSetId)) {
-			const lastUsed = localStorage.getItem('mfs.activeSet');
+			const lastUsed = localStorage.getItem('sneakernet.activeSet');
 			this.selectSet(
 				this.sets.find((s) => s.id === lastUsed)?.id ?? this.sets[0]?.id ?? null
 			);
@@ -355,7 +355,7 @@ export class AppState {
 	selectSet(id: string | null): void {
 		if (this.activeSetId === id) return;
 		this.activeSetId = id;
-		localStorage.setItem('mfs.activeSet', id ?? '');
+		localStorage.setItem('sneakernet.activeSet', id ?? '');
 		const set = this.activeSet;
 		// $state.snapshot unwraps the reactive proxy so we can clone it.
 		this.draft = set ? ($state.snapshot(set) as SyncSet) : null;
@@ -392,7 +392,7 @@ export class AppState {
 		this.draft = $state.snapshot(data.set) as SyncSet;
 		this.draftJson = JSON.stringify(data.set);
 		this.activeSetId = data.set.id;
-		localStorage.setItem('mfs.activeSet', data.set.id);
+		localStorage.setItem('sneakernet.activeSet', data.set.id);
 		this.showToast('info', `Saved "${data.set.name}"`);
 		return true;
 	}

@@ -1,7 +1,7 @@
 /**
  * Desktop-app settings (`src/lib/server/desktop.ts`): loopback detection and
  * the desktop-settings.json read/write cycle used by the Desktop Settings
- * dialog. The settings path comes from METFILESYNC_DESKTOP_SETTINGS (set to
+ * dialog. The settings path comes from SNEAKERNET_DESKTOP_SETTINGS (set to
  * a temp file in tests/setup.ts).
  */
 import fs from 'node:fs';
@@ -13,7 +13,7 @@ import {
 	writeDesktopSettings
 } from '$lib/server/desktop';
 
-const settingsFile = process.env['METFILESYNC_DESKTOP_SETTINGS'] as string;
+const settingsFile = process.env['SNEAKERNET_DESKTOP_SETTINGS'] as string;
 
 /** A well-formed settings file as the shell would write it. */
 function seedFile(overrides: Record<string, unknown> = {}): void {

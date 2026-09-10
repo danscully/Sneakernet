@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * MetFileSync is a dark-only application. The dark zinc palette is installed
+ * Sneakernet is a dark-only application. The dark zinc palette is installed
  * on :root directly.
  */
 :root,
@@ -79,14 +79,14 @@
 
 /* Dense data tables: compact rows by default. Sticky header on the th
    cells (sticky on thead is unreliable inside scroll containers). */
-table.mfs-dense thead th {
+table.sn-dense thead th {
 	position: sticky;
 	top: 0;
 	z-index: 10;
 	background: var(--background);
 }
-table.mfs-dense th,
-table.mfs-dense td {
+table.sn-dense th,
+table.sn-dense td {
 	padding-top: 0.125rem;
 	padding-bottom: 0.125rem;
 	padding-left: 0.375rem;

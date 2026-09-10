@@ -9,9 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'mfs-test-'));
-process.env['METFILESYNC_ROOT'] = path.join(base, 'root');
-process.env['METFILESYNC_DATA'] = path.join(base, 'data');
-process.env['METFILESYNC_NO_CLONE'] = '1';
-process.env['METFILESYNC_DESKTOP_SETTINGS'] = path.join(base, 'desktop-settings.json');
-fs.mkdirSync(process.env['METFILESYNC_ROOT'], { recursive: true });
-fs.mkdirSync(process.env['METFILESYNC_DATA'], { recursive: true });
+process.env['SNEAKERNET_ROOT'] = path.join(base, 'root');
+process.env['SNEAKERNET_DATA'] = path.join(base, 'data');
+process.env['SNEAKERNET_NO_CLONE'] = '1';
+process.env['SNEAKERNET_DESKTOP_SETTINGS'] = path.join(base, 'desktop-settings.json');
+fs.mkdirSync(process.env['SNEAKERNET_ROOT'], { recursive: true });
+fs.mkdirSync(process.env['SNEAKERNET_DATA'], { recursive: true });

@@ -10,8 +10,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-const root = process.env.METFILESYNC_ROOT ?? path.resolve('data', 'root');
-const dataDir = process.env.METFILESYNC_DATA ?? path.resolve('data');
+const root = process.env.SNEAKERNET_ROOT ?? path.resolve('data', 'root');
+const dataDir = process.env.SNEAKERNET_DATA ?? path.resolve('data');
 
 function mkfile(rel, content) {
 	const p = path.join(root, rel);
@@ -24,7 +24,7 @@ function mkfileRandom(rel, size) {
 }
 
 // --- Source tree -----------------------------------------------------------
-mkfile('demo/src/documents/readme.txt', 'MetFileSync demo file\n');
+mkfile('demo/src/documents/readme.txt', 'Sneakernet demo file\n');
 mkfile('demo/src/documents/notes/todo.md', '# TODO\n\n- try a compare\n- run a sync\n');
 mkfileRandom('demo/src/photos/2024/beach.jpg', 256 * 1024);
 mkfileRandom('demo/src/photos/2024/city.jpg', 512 * 1024);

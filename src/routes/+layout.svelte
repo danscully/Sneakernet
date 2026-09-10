@@ -40,11 +40,11 @@
 
 <div class="flex h-screen flex-col overflow-hidden">
 	<!-- Shared header. In the desktop app the window title already says
-		"MetFileSync", so the in-window H1 is hidden there; remote browser
+		"Sneakernet", so the in-window H1 is hidden there; remote browser
 		users still see it. -->
 	<header class="flex h-11 shrink-0 items-center gap-3 border-b px-3">
 		{#if !app.desktopHost}
-			<h1 class="text-sm font-semibold tracking-tight">MetFileSync</h1>
+			<h1 class="text-sm font-semibold tracking-tight">Sneakernet</h1>
 			<Separator orientation="vertical" class="h-5" />
 		{/if}
 		<span class="text-xs text-muted-foreground">Sync Set:</span>

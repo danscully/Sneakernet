@@ -4,7 +4,7 @@
  * Every sync run writes a log file to LOG_DIR/run-<runId>.log. The first line
  * is a JSON metadata record; the rest are timestamped text lines derived from
  * the engine's events. Old logs are pruned based on the configured retention
- * (METFILESYNC_LOG_RETENTION_DAYS / config.json logRetentionDays, default 7).
+ * (SNEAKERNET_LOG_RETENTION_DAYS / config.json logRetentionDays, default 7).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';

@@ -1,4 +1,4 @@
-# MetFileSync — End-User Deployment Proposal
+# Sneakernet — End-User Deployment Proposal
 
 **Audience:** non-technical end users. The deployment experience should be as
 easy as installing a normal desktop app: download, double-click, done. No
@@ -7,14 +7,14 @@ terminal, no Node.js, no manual native-module compilation.
 ## Constraints that shape the proposal
 
 1. The app is a **local web app**: a SvelteKit server (Node) + browser UI +
-   a **native addon** (`metfilesync_native.node`) that must match the host
+   a **native addon** (`sneakernet_native.node`) that must match the host
    OS/architecture (macOS arm64/x64, Windows x64, potentially Linux).
 2. The native addon cannot be shipped as a single cross-platform binary —
    it must be **prebuilt per platform** and bundled with the installer
    (N-API/Node-API guarantees binary compatibility across Node versions, so
    one build per OS/arch is enough).
 3. The **sync root** and data directory must live in user-writable,
-   per-user locations (e.g. `~/Documents/MetFileSync` or the user's chosen
+   per-user locations (e.g. `~/Documents/Sneakernet` or the user's chosen
    folder on first run) — never inside the app bundle.
 
 ## Recommendation (in order of preference)
@@ -48,9 +48,9 @@ Package the existing Node server + the UI as a desktop application using
   + notarization; Windows Authenticode) so installers don't scare users with
   security warnings.
 - **First-run wizard:** ask where the sync root should live (default
-  `~/Documents/MetFileSync` or `Documents\MetFileSync`), create it, and write
+  `~/Documents/Sneakernet` or `Documents\Sneakernet`), create it, and write
   `config.json` into the OS user-data directory
-  (`~/Library/Application Support/MetFileSync`, `%APPDATA%\MetFileSync`).
+  (`~/Library/Application Support/Sneakernet`, `%APPDATA%\Sneakernet`).
   This removes the only "server configuration" step end users would face.
 - **Auto-update:** built-in updater (Tauri updater / electron-updater /
   Squirrel) so users never re-download installs. Updates ship new server
@@ -72,8 +72,8 @@ ecosystem maturity matter most.
 Compile the server into one native executable using **Bun's `--compile`**
 (or `pkg`/Node SEA) and drive the UI through the user's default browser:
 
-- One file per platform, e.g. `MetFileSync-macOS-arm64`,
-  `MetFileSync-Windows-x64.exe`.
+- One file per platform, e.g. `Sneakernet-macOS-arm64`,
+  `Sneakernet-Windows-x64.exe`.
 - On first run it opens the browser at `http://localhost:<port>` (with a
   fixed port + tray/menu-bar helper to re-open and quit).
 - Native addon still needs to be prebuilt per platform and embedded in the
@@ -85,9 +85,9 @@ Compile the server into one native executable using **Bun's `--compile`**
 
 ### Option C — Appliance / NAS / server deployment (secondary)
 
-For users who want MetFileSync running on a NAS or home server:
+For users who want Sneakernet running on a NAS or home server:
 
-- Provide a **Docker image** (`ghcr.io/…/metfilesync`) with the native addon
+- Provide a **Docker image** (`ghcr.io/…/sneakernet`) with the native addon
   prebuilt for linux/amd64+arm64, volumes for the sync root and data dir.
 - Provide a one-click **Compose template** and, ideally, an app package for
   the common consumer NAS platforms (Synology DSM Package Center, QNAP
@@ -99,15 +99,15 @@ For users who want MetFileSync running on a NAS or home server:
 1. **CI builds for every commit:** build the native addon on the three
    targets (macos-latest, windows-latest, ubuntu-latest) plus `npm run build`
    for the web app. Artifacts are already separated
-   (`native/build/Release/metfilesync_native.node`).
+   (`native/build/Release/sneakernet_native.node`).
 2. **Add a prebuilds loader:** extend `native.ts` to try
-   `native/prebuilds/<platform>-<arch>/metfilesync_native.node` before the
+   `native/prebuilds/<platform>-<arch>/sneakernet_native.node` before the
    local build (this also lets developers run without a C++ toolchain).
 3. **Pick the shell (Tauri recommended)**, wrap the existing server
    (`node build/index.js` equivalent), embed prebuilds, implement the
    first-run wizard and auto-updater.
 4. **Installer production:** GitHub Releases carrying
-   `MetFileSync-x.y.z-arm64.dmg`, `MetFileSync-Setup-x.y.z.exe` (and the
+   `Sneakernet-x.y.z-arm64.dmg`, `Sneakernet-Setup-x.y.z.exe` (and the
    plain server bundle as a zip for Option B users). Sign and notarize in CI.
 5. **Update channel:** publish the app version + a release feed for the
    updater; keep sync-set JSON fully backward compatible (it already is —

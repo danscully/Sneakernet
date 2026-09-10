@@ -29,7 +29,7 @@ describe('access decision (LAN sharing guard)', () => {
 
 	it('serializes a restrictive access cookie', () => {
 		const header = accessCookieHeader(TOKEN);
-		expect(header).toContain(`mfs_token=${TOKEN}`);
+		expect(header).toContain(`sneakernet_token=${TOKEN}`);
 		expect(header).toContain('Path=/');
 		expect(header).toContain('HttpOnly');
 		expect(header).toContain('SameSite=Lax');

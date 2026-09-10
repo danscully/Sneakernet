@@ -17,7 +17,7 @@ export const GET: RequestHandler = (event) => {
 		root: ROOT,
 		// Set by the desktop shell when LAN sharing is enabled.
 		// Example: http://192.168.1.20:8787/?token=1a2b...
-		lanUrl: process.env['METFILESYNC_LAN_URL'] ?? null,
+		lanUrl: process.env['SNEAKERNET_LAN_URL'] ?? null,
 		desktopHost: isDesktopHost(event)
 	});
 };

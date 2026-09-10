@@ -1,6 +1,6 @@
-# MetFileSync
+# Sneakernet
 
-MetFileSync is a dense, dark-themed web app that syncs a directory on the server
+Sneakernet is a dense, dark-themed web app that syncs a directory on the server
 to other directories **on the same server**, as fast as the filesystem allows.
 Files are compared by **size and datestamp within a configurable delta**, and
 copies are performed by a **native C++ Node addon** (raw `pread`/`pwrite` or an
@@ -36,7 +36,7 @@ APFS `clonefile` fast path) with progress streamed back into the UI.
 - **Path safety** — all directories live under a single root path from the
   server deployment config; user-entered paths are sanitized and cannot escape
   it.
-- **Destination semaphore** — a lock file (`.mfs-lock`) at each destination
+- **Destination semaphore** — a lock file (`.sneakernet-lock`) at each destination
   root prevents two syncs from targeting the same directory at once. The
   holder touches it every 5 seconds; a sync that finds a lock reports
   "waiting" and, after 10 seconds without a touch, breaks it as stale.
@@ -74,7 +74,7 @@ each target platform (or in CI).
 
 - **macOS** (arm64 / x64): requires Xcode Command Line Tools
   (`xcode-select --install`). `npm run build:native` produces
-  `native/build/Release/metfilesync_native.node`. The APFS `clonefile` fast
+  `native/build/Release/sneakernet_native.node`. The APFS `clonefile` fast
   path is used automatically when the filesystem supports it.
 - **Windows** (x64): requires Visual Studio Build Tools 2022 (the
   "Desktop development with C++" workload) and Python 3 (node-gyp uses it).
@@ -99,11 +99,11 @@ directory → default.
 
 | Setting | Env var | `config.json` key | Default | Meaning |
 |---|---|---|---|---|
-| Sync root | `METFILESYNC_ROOT` | `root` | `./data/root` | All source/destination directories must live under this |
-| Data dir | `METFILESYNC_DATA` | `data` | `./data` | Where `syncsets.json` is stored |
-| Native addon | `METFILESYNC_NATIVE` | — | `./native/build/Release/metfilesync_native.node` | Path to the `.node` binary |
-| Disable clone | `METFILESYNC_NO_CLONE=1` | — | off | Force the chunked copy loop (progress even on APFS) |
-| Log retention | `METFILESYNC_LOG_RETENTION_DAYS` | `logRetentionDays` | `7` | Days sync log files are kept in `data/logs` |
+| Sync root | `SNEAKERNET_ROOT` | `root` | `./data/root` | All source/destination directories must live under this |
+| Data dir | `SNEAKERNET_DATA` | `data` | `./data` | Where `syncsets.json` is stored |
+| Native addon | `SNEAKERNET_NATIVE` | — | `./native/build/Release/sneakernet_native.node` | Path to the `.node` binary |
+| Disable clone | `SNEAKERNET_NO_CLONE=1` | — | off | Force the chunked copy loop (progress even on APFS) |
+| Log retention | `SNEAKERNET_LOG_RETENTION_DAYS` | `logRetentionDays` | `7` | Days sync log files are kept in `data/logs` |
 
 Windows note: `config.json` is read from the working directory of the server
 process, same as macOS/Linux.
@@ -153,8 +153,8 @@ The app ships as a native desktop application (Option A of
   with the adapter-node **server** as a hidden background process, then opens
   the UI in a native window;
 - per-user data lives in the OS application-support directory
-  (`~/Library/Application Support/com.metfilesync.desktop` on macOS,
-  `%APPDATA%\com.metfilesync.desktop` on Windows): `sync-root/` is the sync
+  (`~/Library/Application Support/com.sneakernet.desktop` on macOS,
+  `%APPDATA%\com.sneakernet.desktop` on Windows): `sync-root/` is the sync
   root, `app-data/` holds sync sets and logs;
 - closing the window **quits the whole app**: a native confirmation dialog
   warns first that quitting stops the sync engine and any in-progress syncs
@@ -179,13 +179,13 @@ npm run desktop:build
 This builds the web app + native addon, assembles `desktop/src-tauri/resources/`
 (server bundle **with a pruned production `node_modules/`** — the SSR bundle
 keeps `package.json` `dependencies` external, so they ship inside the app —
-plus `metfilesync_native.node`, and a standalone Node runtime —
+plus `sneakernet_native.node`, and a standalone Node runtime —
 downloaded from nodejs.org and cached in `desktop/.node-cache/`; set
-`MFS_NODE_RUNTIME_DIR` to use a local Node binary instead), and runs
+`SNEAKERNET_NODE_RUNTIME_DIR` to use a local Node binary instead), and runs
 `tauri build`. The outputs are:
 
-- `desktop/src-tauri/target/release/bundle/macos/MetFileSync.app`
-- `desktop/src-tauri/target/release/bundle/dmg/MetFileSync_<version>_aarch64.dmg`
+- `desktop/src-tauri/target/release/bundle/macos/Sneakernet.app`
+- `desktop/src-tauri/target/release/bundle/dmg/Sneakernet_<version>_aarch64.dmg`
 
 **Run the app from `/Applications`** (copy the built `.app` there), not from
 the project directory: macOS TCC restricts apps that execute from inside
@@ -224,23 +224,23 @@ header — manages the machine's settings:
   the dialog (selectable to copy) and in the Sync Set settings dialog —
   every request must present the **access token** (a persistent random token
   generated on first run); the UI and API accept `?token=...` once and then
-  exchange it for an `mfs_token` cookie, so remote users just open the link;
+  exchange it for an `sneakernet_token` cookie, so remote users just open the link;
 - **Apply** persists the settings to `<app-data>/desktop-settings.json`;
   the shell watches that file and restarts the server within ~1s (applying
-  settings aborts any sync in flight — leftover `.mfs-tmp-` files are ignored
+  settings aborts any sync in flight — leftover `.sneakernet-tmp-` files are ignored
   by future compares and overwritten by the next sync).
 
 The Desktop Settings dialog and its `/api/desktop/*` endpoints are visible
 and usable **only inside the app window** (loopback + desktop mode);
 remote users — even with the access link — get a 403 and cannot change the
-root, the port, or LAN sharing. Remote users also see the "MetFileSync"
+root, the port, or LAN sharing. Remote users also see the "Sneakernet"
 page title, which is hidden in the app window (the window title already
 shows it).
 
 Security notes: the link grants full control of syncs on the machine (same
 app, no per-user accounts) — share it only on networks and with people you
 trust. macOS will ask once to allow incoming connections for the bundled
-Node runtime; on Windows allow MetFileSync through Windows Firewall when
+Node runtime; on Windows allow Sneakernet through Windows Firewall when
 prompted.
 
 ### CI builds (macOS + Windows)

@@ -7,10 +7,10 @@
  *              including a pruned production node_modules/ - the SSR bundle
  *              keeps package.json `dependencies` (incl. svelte and
  *              @sveltejs/kit) external, so they must ship inside the app
- *   native/    the platform's metfilesync_native.node addon
+ *   native/    the platform's sneakernet_native.node addon
  *   runtime/   a standalone Node runtime (node / node.exe)
  *
- * The Node runtime is taken from MFS_NODE_RUNTIME_DIR if set, otherwise it is
+ * The Node runtime is taken from SNEAKERNET_NODE_RUNTIME_DIR if set, otherwise it is
  * downloaded from nodejs.org for the requested platform/arch and cached in
  * desktop/.node-cache/. Cross-target packaging (e.g. preparing Windows
  * resources on macOS) uses --platform/--arch flags.
@@ -53,19 +53,19 @@ if (!fs.existsSync(path.join(serverBuild, 'index.js'))) {
 }
 
 // --- native addon ----------------------------------------------------------
-const addonSource = path.join(root, 'native', 'build', 'Release', 'metfilesync_native.node');
+const addonSource = path.join(root, 'native', 'build', 'Release', 'sneakernet_native.node');
 if (!fs.existsSync(addonSource)) {
 	fail('native addon not found - run `npm run build:native` for the target platform first.');
 }
 
 // --- node runtime ---------------------------------------------------------
-const runtimeDirSource = process.env.MFS_NODE_RUNTIME_DIR;
+const runtimeDirSource = process.env.SNEAKERNET_NODE_RUNTIME_DIR;
 const nodeBinaryName = isWindows ? 'node.exe' : 'node';
 
 async function downloadNodeRuntime() {
 	if (runtimeDirSource) {
 		const candidate = path.join(runtimeDirSource, nodeBinaryName);
-		if (!fs.existsSync(candidate)) fail(`MFS_NODE_RUNTIME_DIR does not contain ${nodeBinaryName}`);
+		if (!fs.existsSync(candidate)) fail(`SNEAKERNET_NODE_RUNTIME_DIR does not contain ${nodeBinaryName}`);
 		return fs.realpathSync(candidate);
 	}
 	const distPlatform = platform === 'win32' ? 'win' : platform === 'darwin' ? 'darwin' : 'linux';
@@ -144,7 +144,7 @@ fs.rmSync(stageDir, { recursive: true, force: true });
 // shell is killed abruptly (the stdin pipe closes -> the server exits).
 fs.writeFileSync(
 	path.join(resourcesDir, 'server', 'server-wrapper.mjs'),
-	`// MetFileSync server wrapper - exits when the desktop shell dies.
+	`// Sneakernet server wrapper - exits when the desktop shell dies.
 process.stdin.resume();
 process.stdin.on('end', () => process.exit(0));
 process.stdin.on('data', () => {
@@ -155,8 +155,8 @@ await import('./index.js');
 );
 
 fs.mkdirSync(path.join(resourcesDir, 'native'), { recursive: true });
-console.log('  native/   <- metfilesync_native.node');
-fs.copyFileSync(addonSource, path.join(resourcesDir, 'native', 'metfilesync_native.node'));
+console.log('  native/   <- sneakernet_native.node');
+fs.copyFileSync(addonSource, path.join(resourcesDir, 'native', 'sneakernet_native.node'));
 
 fs.mkdirSync(path.join(resourcesDir, 'runtime'), { recursive: true });
 console.log(`  runtime/  <- ${path.relative(root, nodeBinary)}`);

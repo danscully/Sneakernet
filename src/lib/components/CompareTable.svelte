@@ -82,7 +82,7 @@
 {/snippet}
 
 <ScrollArea type="always" class="h-full">
-	<Table.Root class="mfs-dense w-full caption-bottom">
+	<Table.Root class="sn-dense w-full caption-bottom">
 		<Table.Header>
 			<Table.Row class="hover:bg-transparent">
 				<Table.Head class="w-8 text-center">Sel</Table.Head>

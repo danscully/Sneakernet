@@ -1,12 +1,12 @@
-// MetFileSync desktop shell (Option A, DeployProposal.md).
+// Sneakernet desktop shell (Option A, DeployProposal.md).
 //
 // The shell launches the bundled Node runtime with the adapter-node server
 // (resources/server) as a hidden child process, waits until it accepts
 // connections, then navigates the main webview to the local server URL
 // exactly once.
 // Per-user data lives under the OS application-support directory:
-//   <app-data>/sync-root     - default sync root (METFILESYNC_ROOT)
-//   <app-data>/app-data      - sync sets / logs (METFILESYNC_DATA)
+//   <app-data>/sync-root     - default sync root (SNEAKERNET_ROOT)
+//   <app-data>/app-data      - sync sets / logs (SNEAKERNET_DATA)
 //   <app-data>/desktop-settings.json - this app's settings
 // Closing the window quits the whole app: a native confirmation dialog
 // warns first (quitting stops the embedded server and any in-progress
@@ -19,7 +19,7 @@
 // the server binds 0.0.0.0 on a stable port and requires an access token
 // (shareable link); when disabled, it binds 127.0.0.1 only.
 //
-// The server gets the settings file path via METFILESYNC_DESKTOP_SETTINGS
+// The server gets the settings file path via SNEAKERNET_DESKTOP_SETTINGS
 // and writes changes there (from the Desktop Settings dialog). A watcher
 // thread polls the file; whenever its contents change, the shell restarts
 // the server child with the new binding/root and re-navigates the window.
@@ -217,7 +217,7 @@ fn spawn_server(handle: &AppHandle) {
         .join(if cfg!(windows) { "node.exe" } else { "node" });
     let server_dir = resources.join("server");
     let wrapper = server_dir.join("server-wrapper.mjs");
-    let addon = resources.join("native").join("metfilesync_native.node");
+    let addon = resources.join("native").join("sneakernet_native.node");
     let sync_root = effective_root(&app_data, &settings);
     let server_data = app_data.join("app-data");
     let _ = std::fs::create_dir_all(&server_data);
@@ -229,26 +229,26 @@ fn spawn_server(handle: &AppHandle) {
         .env("PORT", port.to_string())
         .env("HOST", host)
         .env("NODE_ENV", "production")
-        .env("METFILESYNC_ROOT", &sync_root)
-        .env("METFILESYNC_DATA", &server_data)
-        .env("METFILESYNC_NATIVE", &addon)
+        .env("SNEAKERNET_ROOT", &sync_root)
+        .env("SNEAKERNET_DATA", &server_data)
+        .env("SNEAKERNET_NATIVE", &addon)
         // Lets the server read/write desktop settings (Desktop Settings
         // dialog) and know it is running under this shell.
-        .env("METFILESYNC_DESKTOP_SETTINGS", settings_path(&app_data))
+        .env("SNEAKERNET_DESKTOP_SETTINGS", settings_path(&app_data))
         .current_dir(&server_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if settings.lan_sharing {
-        cmd.env("METFILESYNC_ACCESS_TOKEN", &settings.access_token);
-        cmd.env("METFILESYNC_LAN_URL", lan_url(&settings, port));
+        cmd.env("SNEAKERNET_ACCESS_TOKEN", &settings.access_token);
+        cmd.env("SNEAKERNET_LAN_URL", lan_url(&settings, port));
     }
     hide_console(&mut cmd);
 
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(err) => {
-            panic!("cannot start the MetFileSync server process: {err}");
+            panic!("cannot start the Sneakernet server process: {err}");
         }
     };
 
@@ -324,7 +324,7 @@ fn confirm_quit(handle: &AppHandle) {
             "Quitting stops the sync engine — any in-progress syncs will stop. \
              Quit anyway?",
         )
-        .title("Quit MetFileSync?")
+        .title("Quit Sneakernet?")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom(
             String::from("Quit"),
@@ -390,6 +390,23 @@ fn main() {
                 .path()
                 .app_data_dir()
                 .expect("cannot resolve the app data directory");
+            // One-time migration from the pre-rename bundle identifier
+            // (com.metfilesync.desktop was this app's name until v0.1): carry
+            // the sync root, sync sets, settings and logs over so existing
+            // installs keep working after the rename.
+            let old_app_data = app_data.with_file_name("com.metfilesync.desktop");
+            if !app_data.exists() && old_app_data.exists() {
+                match std::fs::rename(&old_app_data, &app_data) {
+                    Ok(()) => println!(
+                        "[shell] migrated app data from {}",
+                        old_app_data.display()
+                    ),
+                    Err(err) => eprintln!(
+                        "[shell] could not migrate app data from {}: {err}",
+                        old_app_data.display()
+                    ),
+                }
+            }
             let settings = load_settings(&app_data);
             // The managed state was created with defaults in `.manage()`;
             // now that the app data dir is available, install the real ones.
@@ -401,7 +418,7 @@ fn main() {
 
             // LAN sharing and the sync root are managed from the in-app
             // Desktop Settings dialog; the tray just opens/quits the app.
-            let show = MenuItem::with_id(&handle, "show", "Open MetFileSync", true, None::<&str>)?;
+            let show = MenuItem::with_id(&handle, "show", "Open Sneakernet", true, None::<&str>)?;
             let quit = MenuItem::with_id(
                 &handle,
                 "quit",
@@ -412,7 +429,7 @@ fn main() {
             let menu = Menu::with_items(&handle, &[&show, &quit])?;
             TrayIconBuilder::with_id("tray")
                 .icon(handle.default_window_icon().unwrap().clone())
-                .tooltip("MetFileSync")
+                .tooltip("Sneakernet")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
@@ -441,11 +458,11 @@ fn main() {
                 let quit = MenuItem::with_id(
                     &handle,
                     "app-quit",
-                    "Quit MetFileSync",
+                    "Quit Sneakernet",
                     true,
                     Some("CmdOrCtrl+Q"),
                 )?;
-                let app_menu = SubmenuBuilder::new(&handle, "MetFileSync")
+                let app_menu = SubmenuBuilder::new(&handle, "Sneakernet")
                     .item(&quit)
                     .build()?;
                 let edit_menu = SubmenuBuilder::new(&handle, "Edit")
@@ -489,7 +506,7 @@ fn main() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("error while building MetFileSync")
+        .expect("error while building Sneakernet")
         .run(|app, event| {
             match event {
                 // User/system quit without a code (Cmd+Q, the Dock's Quit,

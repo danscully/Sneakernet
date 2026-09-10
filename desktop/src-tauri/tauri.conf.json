@@ -1,8 +1,8 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "MetFileSync",
+	"productName": "Sneakernet",
 	"version": "0.1.0",
-	"identifier": "com.metfilesync.desktop",
+	"identifier": "com.sneakernet.desktop",
 	"build": {
 		"frontendDist": "../ui"
 	},
@@ -10,7 +10,7 @@
 		"windows": [
 			{
 				"label": "main",
-				"title": "MetFileSync",
+				"title": "Sneakernet",
 				"width": 1560,
 				"height": 1000,
 				"minWidth": 1100,
@@ -26,7 +26,7 @@
 		"targets": "all",
 		"category": "Utility",
 		"shortDescription": "Fast local directory sync",
-		"longDescription": "MetFileSync syncs a directory on your computer to other directories using native-speed copies, live progress and a two-step compare/sync workflow.",
+		"longDescription": "Sneakernet syncs a directory on your computer to other directories using native-speed copies, live progress and a two-step compare/sync workflow.",
 		"icon": [
 			"icons/32x32.png",
 			"icons/128x128.png",

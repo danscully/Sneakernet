@@ -7,7 +7,7 @@
  *
  * The file is owned jointly by the shell (which restarts the server when it
  * changes) and the server (which the modal UI talks to). The shell points the
- * server at the file via METFILESYNC_DESKTOP_SETTINGS.
+ * server at the file via SNEAKERNET_DESKTOP_SETTINGS.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -25,7 +25,7 @@ export interface DesktopSettings {
 }
 
 /** Path of the settings file (only set when running under the desktop shell). */
-const settingsPath = process.env['METFILESYNC_DESKTOP_SETTINGS'] ?? null;
+const settingsPath = process.env['SNEAKERNET_DESKTOP_SETTINGS'] ?? null;
 
 /** True when the server runs under the Tauri desktop shell. */
 export function desktopMode(): boolean {

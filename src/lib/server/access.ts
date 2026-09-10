@@ -1,14 +1,14 @@
 /**
  * Token-based access guard for the desktop app's optional LAN sharing mode.
  *
- * When the desktop shell starts the server with METFILESYNC_ACCESS_TOKEN set,
- * every request must prove knowledge of the token: via the `mfs_token` cookie
+ * When the desktop shell starts the server with SNEAKERNET_ACCESS_TOKEN set,
+ * every request must prove knowledge of the token: via the `sneakernet_token` cookie
  * (set once a valid `?token=` query parameter is seen) or via the query
  * parameter itself. Without the env var (dev, `npm run build` deployments with
  * no sharing) all requests pass through untouched.
  */
 
-export const ACCESS_COOKIE = 'mfs_token';
+export const ACCESS_COOKIE = 'sneakernet_token';
 
 export type AccessDecision = 'open' | 'ok' | 'grant' | 'denied';
 

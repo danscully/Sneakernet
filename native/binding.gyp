@@ -1,7 +1,7 @@
 {
 	"targets": [
 		{
-			"target_name": "metfilesync_native",
+			"target_name": "sneakernet_native",
 			"sources": ["fastcopy.cc"],
 			"include_dirs": ["<!@(node -p \"require('node-addon-api').include\")"],
 			"defines": ["NAPI_VERSION=8"],

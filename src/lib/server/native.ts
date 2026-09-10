@@ -1,5 +1,5 @@
 /**
- * TypeScript wrapper around the native MetFileSync copy addon.
+ * TypeScript wrapper around the native Sneakernet copy addon.
  *
  * All file movement (copy / rename / delete) goes through this module so that
  * the heavy lifting happens in native OS calls, with progress reported back
@@ -54,11 +54,11 @@ function loadBinding(): NativeBinding {
 	if (binding) return binding;
 	const require = createRequire(import.meta.url);
 	const candidates: string[] = [];
-	if (process.env['METFILESYNC_NATIVE']) candidates.push(process.env['METFILESYNC_NATIVE']);
-	candidates.push(path.resolve(process.cwd(), 'native/build/Release/metfilesync_native.node'));
+	if (process.env['SNEAKERNET_NATIVE']) candidates.push(process.env['SNEAKERNET_NATIVE']);
+	candidates.push(path.resolve(process.cwd(), 'native/build/Release/sneakernet_native.node'));
 	try {
 		const here = path.dirname(fileURLToPath(import.meta.url));
-		candidates.push(path.resolve(here, '../../../native/build/Release/metfilesync_native.node'));
+		candidates.push(path.resolve(here, '../../../native/build/Release/sneakernet_native.node'));
 	} catch {
 		/* import.meta.url unavailable in some bundlers; cwd candidate covers it */
 	}
@@ -69,7 +69,7 @@ function loadBinding(): NativeBinding {
 		}
 	}
 	throw new Error(
-		`MetFileSync native addon not found. Run \`npm run build:native\`. Tried: ${candidates.join(', ')}`
+		`Sneakernet native addon not found. Run \`npm run build:native\`. Tried: ${candidates.join(', ')}`
 	);
 }
 

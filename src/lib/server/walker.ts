@@ -16,12 +16,12 @@ export interface WalkEntry {
 export type WalkMap = Map<string, WalkEntry>;
 
 /** Lock file written at a destination root while a sync owns it. */
-export const LOCK_FILE = '.mfs-lock';
+export const LOCK_FILE = '.sneakernet-lock';
 
 /** True for files the engine parks inside destinations (locks, temp copies). */
 export function isEngineFile(relPath: string): boolean {
 	const base = relPath.split('/').at(-1) ?? '';
-	return base === LOCK_FILE || base.includes('.mfs-tmp-');
+	return base === LOCK_FILE || base.includes('.sneakernet-tmp-');
 }
 
 /**

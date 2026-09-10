@@ -3,11 +3,11 @@ import { ACCESS_COOKIE, accessCookieHeader, accessDecision } from '$lib/server/a
 
 /**
  * Server hook: token guard for the desktop app's LAN sharing mode.
- * See src/lib/server/access.ts. Without METFILESYNC_ACCESS_TOKEN set this
+ * See src/lib/server/access.ts. Without SNEAKERNET_ACCESS_TOKEN set this
  * hook is a no-op.
  */
 export const handle: Handle = async ({ event, resolve }) => {
-	const required = process.env['METFILESYNC_ACCESS_TOKEN'];
+	const required = process.env['SNEAKERNET_ACCESS_TOKEN'];
 	const decision = accessDecision({
 		required,
 		cookie: event.cookies.get(ACCESS_COOKIE),
@@ -45,7 +45,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 		default: {
 			const message =
-				'MetFileSync: access denied. Open the access link that was shared with you (it contains the access token).';
+				'Sneakernet: access denied. Open the access link that was shared with you (it contains the access token).';
 			if (event.url.pathname.startsWith('/api/')) {
 				return new Response(JSON.stringify({ message }), {
 					status: 401,

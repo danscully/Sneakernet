@@ -422,7 +422,7 @@ describe('engine: stopping', () => {
 	});
 });
 
-/** Count leftover MetFileSync temp files in a directory tree. */
+/** Count leftover Sneakernet temp files in a directory tree. */
 async function noTempFiles(rel: string): Promise<number> {
 	let count = 0;
 	async function walk(dir: string): Promise<void> {
@@ -434,7 +434,7 @@ async function noTempFiles(rel: string): Promise<number> {
 		}
 		for await (const e of entries) {
 			const p = path.join(dir, e.name);
-			if (e.name.includes('.mfs-tmp-')) count += 1;
+			if (e.name.includes('.sneakernet-tmp-')) count += 1;
 			const s = await fs.stat(p).catch(() => null);
 			if (s?.isDirectory()) await walk(p);
 		}
