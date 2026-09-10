@@ -243,14 +243,44 @@ trust. macOS will ask once to allow incoming connections for the bundled
 Node runtime; on Windows allow Sneakernet through Windows Firewall when
 prompted.
 
-### CI builds (macOS + Windows)
+### Making a release (macOS + Windows)
 
-[.github/workflows/desktop-build.yml](.github/workflows/desktop-build.yml)
-builds signed-ready artifacts on `macos-latest` (arm64 .dmg) and
-`windows-latest` (MSI + NSIS .exe) on every `v*` tag push, uploading a draft
-GitHub Release with the installers. Add `APPLE_CERTIFICATE`/`APPLE_ID`
-and a Windows code-signing certificate as repository secrets to enable
-signing + notarization.
+Releases are built by CI — no local Windows machine needed. The workflow
+([.github/workflows/desktop-build.yml](.github/workflows/desktop-build.yml))
+runs on every `v*` tag push: `macos-latest` (arm64) produces the `.dmg` +
+`.app`, `windows-latest` (x64) produces the MSI + NSIS `.exe`, and the
+installers are attached to a **draft GitHub Release** for that tag.
+
+Steps:
+
+1. **One-time** — push the repo to GitHub (`git remote add origin <url>` +
+   `git push -u origin main`) and confirm the workflow file landed on `main`.
+2. Bump the version **everywhere it appears** (keep them in sync):
+   `package.json`, `desktop/src-tauri/tauri.conf.json`, and
+   `desktop/src-tauri/Cargo.toml` (all `0.1.0` today).
+3. Commit, then tag and push the tag:
+   ```sh
+   git tag v0.1.0
+   git push origin main --tags
+   ```
+4. Watch the **Actions** tab: both jobs build (~5–10 min), then a draft
+   release named after the tag appears under **Releases** with the
+   `Sneakernet_<version>_aarch64.dmg`, `.msi`, and `.exe` installers
+   attached. Write the release notes and hit **Publish**.
+
+Notes:
+
+- Installers are **unsigned** until signing secrets are configured. macOS
+  users must right-click the app → Open (or run
+  `xattr -cr /Applications/Sneakernet.app`) the first time; Windows shows a
+  SmartScreen prompt (More info → Run anyway). To sign instead: add the
+  `APPLE_CERTIFICATE`/`APPLE_ID` (+ related) secrets for macOS signing &
+  notarization, and a Windows code-signing certificate — the workflow picks
+  them up automatically.
+- Raw artifacts are also downloadable from each workflow run (Actions → run →
+  Artifacts), including the macOS `.app` bundle.
+- A build can also be triggered manually (Actions → Desktop builds → Run
+  workflow) without creating a release.
 
 ## Development
 
