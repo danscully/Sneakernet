@@ -26,12 +26,14 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs::{self, File};
+use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -40,6 +42,70 @@ use tauri::{
     AppHandle, Manager, RunEvent,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+// ---------------------------------------------------------------- logging --
+
+/// Everything the shell and the embedded server print is written to
+/// `<app-data>/logs/shell.log` so GUI installs (Windows in particular has no
+/// console) can be diagnosed. Lines are mirrored to stdout for `cargo run`.
+static LOGGER: OnceLock<Mutex<File>> = OnceLock::new();
+
+/// Rotate the log once it exceeds this size (the previous run is kept as
+/// shell.log.old).
+const LOG_MAX_BYTES: u64 = 1 << 20;
+
+fn init_logging(app_data: &Path) {
+    let dir = app_data.join("logs");
+    if fs::create_dir_all(&dir).is_err() {
+        return; // fall back to stdout-only logging
+    }
+    let path = dir.join("shell.log");
+    let oversized = fs::metadata(&path).map(|m| m.len() > LOG_MAX_BYTES).unwrap_or(false);
+    if oversized {
+        let _ = fs::remove_file(dir.join("shell.log.old"));
+        let _ = fs::rename(&path, dir.join("shell.log.old"));
+    }
+    if let Ok(file) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = LOGGER.set(Mutex::new(file));
+        logln(&format!(
+            "Sneakernet shell starting (pid {})",
+            std::process::id()
+        ));
+    }
+}
+
+/// Append one line to the log (and stdout, where a console exists).
+fn logln(line: &str) {
+    println!("[shell] {line}");
+    if let Some(logger) = LOGGER.get() {
+        if let Ok(mut file) = logger.lock() {
+            let _ = file.write_all(format!("[{ts}] {line}\n", ts = timestamp()).as_bytes());
+        }
+    }
+}
+
+/// UTC timestamp `YYYY-MM-DDThh:mm:ssZ` (no chrono dependency needed).
+fn timestamp() -> String {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let secs = now.as_secs();
+    let (days, rem) = (secs / 86_400, secs % 86_400);
+    // civil_from_days (Howard Hinnant) - calendar date from a day count
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 - doe / 36524 + doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        (rem % 3600) / 60,
+        rem % 60
+    )
+}
 
 /// Shared shell state.
 struct AppState {
@@ -185,6 +251,7 @@ fn spawn_server(handle: &AppHandle) {
 
     // Stop any previous instance (settings changes restart the server).
     if let Some(mut previous) = state.child.lock().unwrap().take() {
+        logln("stopping the previous server instance");
         let _ = previous.kill();
         let _ = previous.wait();
     }
@@ -196,10 +263,10 @@ fn spawn_server(handle: &AppHandle) {
             settings.lan_port
         } else {
             let fallback = free_port();
-            println!(
-                "[shell] port {} is busy - using {fallback} instead",
+            logln(&format!(
+                "port {} is busy - using {fallback} instead",
                 settings.lan_port
-            );
+            ));
             fallback
         };
         ("0.0.0.0", port)
@@ -245,19 +312,28 @@ fn spawn_server(handle: &AppHandle) {
     }
     hide_console(&mut cmd);
 
+    logln(&format!(
+        "starting server: {} (host {host}, port {port}, root {})",
+        wrapper.display(),
+        sync_root.display()
+    ));
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(err) => {
+            logln(&format!("cannot start the Sneakernet server process: {err}"));
             panic!("cannot start the Sneakernet server process: {err}");
         }
     };
+    logln(&format!("server child spawned (pid {})", child.id()));
 
-    // Log server output to the shell's stdout/stderr for diagnostics.
+    // Capture the server's output into the shell log (it is also the only
+    // place server crashes - e.g. module resolution errors - become visible
+    // on GUI installs).
     if let Some(out) = child.stdout.take() {
         thread::spawn(move || {
             use std::io::{BufRead, BufReader};
             for line in BufReader::new(out).lines().flatten() {
-                println!("[server] {line}");
+                logln(&format!("[server] {line}"));
             }
         });
     }
@@ -265,7 +341,7 @@ fn spawn_server(handle: &AppHandle) {
         thread::spawn(move || {
             use std::io::{BufRead, BufReader};
             for line in BufReader::new(err).lines().flatten() {
-                eprintln!("[server] {line}");
+                logln(&format!("[server:err] {line}"));
             }
         });
     }
@@ -292,9 +368,10 @@ fn spawn_server(handle: &AppHandle) {
     let origin_check = origin.clone();
     thread::spawn(move || {
         if !wait_for_server(port, Duration::from_secs(60)) {
-            eprintln!("[shell] server did not become ready within 60s");
+            logln("server did not become ready within 60s - the window will stay on the loading page; check for [server:err] lines above");
             return;
         }
+        logln(&format!("server ready on port {port} - navigating the window"));
         for i in 0..10 {
             let script = if i == 0 {
                 format!("window.location.replace({url_for_nav:?});")
@@ -362,7 +439,7 @@ fn watch_settings(handle: AppHandle) {
             if current == last {
                 continue;
             }
-            println!("[shell] desktop settings changed - restarting the server");
+            logln("desktop settings changed - restarting the server");
             *handle.state::<AppState>().settings.lock().unwrap() = current.clone();
             last = current;
             spawn_server(&handle);
@@ -394,27 +471,28 @@ fn main() {
             // (com.metfilesync.desktop was this app's name until v0.1): carry
             // the sync root, sync sets, settings and logs over so existing
             // installs keep working after the rename.
+            init_logging(&app_data);
             let old_app_data = app_data.with_file_name("com.metfilesync.desktop");
             if !app_data.exists() && old_app_data.exists() {
                 match std::fs::rename(&old_app_data, &app_data) {
-                    Ok(()) => println!(
-                        "[shell] migrated app data from {}",
+                    Ok(()) => logln(&format!(
+                        "migrated app data from {}",
                         old_app_data.display()
-                    ),
-                    Err(err) => eprintln!(
-                        "[shell] could not migrate app data from {}: {err}",
+                    )),
+                    Err(err) => logln(&format!(
+                        "could not migrate app data from {}: {err}",
                         old_app_data.display()
-                    ),
+                    )),
                 }
             }
             let settings = load_settings(&app_data);
             // The managed state was created with defaults in `.manage()`;
             // now that the app data dir is available, install the real ones.
             *handle.state::<AppState>().settings.lock().unwrap() = settings.clone();
-            println!(
-                "[shell] starting with LAN sharing {}",
+            logln(&format!(
+                "starting with LAN sharing {}",
                 if settings.lan_sharing { "on" } else { "off" }
-            );
+            ));
 
             // LAN sharing and the sync root are managed from the in-app
             // Desktop Settings dialog; the tray just opens/quits the app.
@@ -520,6 +598,7 @@ fn main() {
                 // Stop the server on every exit path; the stdin watchdog
                 // covers anything the shell misses.
                 RunEvent::ExitRequested { .. } | RunEvent::Exit => {
+                    logln("exiting - stopping the embedded server");
                     if let Some(mut child) = app.state::<AppState>().child.lock().unwrap().take() {
                         let _ = child.kill();
                         let _ = child.wait();

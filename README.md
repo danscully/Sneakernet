@@ -164,7 +164,15 @@ The app ships as a native desktop application (Option A of
   makes the server exit on its own;
 - only one instance can run (a second launch focuses the existing window);
 - the webview navigates to the embedded server exactly once on startup and
-  once per settings change (no reload loops).
+  once per settings change (no reload loops);
+- **diagnostics**: the shell and the embedded server log to
+  `<app-data>/logs/shell.log` (macOS:
+  `~/Library/Application Support/com.sneakernet.desktop/logs/shell.log`,
+  Windows: `%APPDATA%\com.sneakernet.desktop\logs\shell.log`). Startup,
+  server output/errors, restarts and shutdown are recorded there - this is
+  the first place to look when the window sits on the loading page. The log
+  rotates to `shell.log.old` at 1 MiB. (Sync-run logs are separate:
+  `<app-data>/app-data/logs/`, viewable in the app's Logs tab.)
 
 ### Building locally (macOS)
 
