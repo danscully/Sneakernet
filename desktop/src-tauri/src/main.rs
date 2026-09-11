@@ -239,15 +239,35 @@ fn boot_url(settings: &DesktopSettings, port: u16) -> String {
     }
 }
 
+// --------------------------------------------------------------- paths -----
+
+/// Tauri's managed paths (app data, resources) come back with the Windows
+/// `\\?\` verbatim prefix, which Node rejects when resolving its main
+/// module (realpathSync fails with EISDIR). dunce strips the prefix where
+/// it is not required; on macOS/Linux this is a no-op.
+fn app_data_of(handle: &AppHandle) -> PathBuf {
+    let raw = handle
+        .path()
+        .app_data_dir()
+        .expect("cannot resolve the app data directory");
+    dunce::simplified(&raw).to_path_buf()
+}
+
+/// See `app_data_of`.
+fn resources_of(handle: &AppHandle) -> PathBuf {
+    let raw = handle
+        .path()
+        .resource_dir()
+        .expect("cannot resolve the resources directory");
+    dunce::simplified(&raw).to_path_buf()
+}
+
 // ------------------------------------------------------------- server proc --
 
 /// Start (or restart) the server child process and navigate the window to it.
 fn spawn_server(handle: &AppHandle) {
     let state = handle.state::<AppState>();
-    let app_data = handle
-        .path()
-        .app_data_dir()
-        .expect("cannot resolve the app data directory");
+    let app_data = app_data_of(handle);
 
     // Stop any previous instance (settings changes restart the server).
     if let Some(mut previous) = state.child.lock().unwrap().take() {
@@ -275,10 +295,7 @@ fn spawn_server(handle: &AppHandle) {
         ("127.0.0.1", free_port())
     };
 
-    let resources = handle
-        .path()
-        .resource_dir()
-        .expect("cannot resolve the resources directory");
+    let resources = resources_of(handle);
     let node = resources
         .join("runtime")
         .join(if cfg!(windows) { "node.exe" } else { "node" });
@@ -428,10 +445,7 @@ fn confirm_quit(handle: &AppHandle) {
 /// in-app Desktop Settings dialog) and restart the server on any change.
 fn watch_settings(handle: AppHandle) {
     thread::spawn(move || {
-        let app_data = handle
-            .path()
-            .app_data_dir()
-            .expect("cannot resolve the app data directory");
+        let app_data = app_data_of(&handle);
         let mut last = load_settings(&app_data);
         loop {
             thread::sleep(Duration::from_secs(1));
@@ -463,10 +477,7 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            let app_data: PathBuf = handle
-                .path()
-                .app_data_dir()
-                .expect("cannot resolve the app data directory");
+            let app_data = app_data_of(&handle);
             // One-time migration from the pre-rename bundle identifier
             // (com.metfilesync.desktop was this app's name until v0.1): carry
             // the sync root, sync sets, settings and logs over so existing
