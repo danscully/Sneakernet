@@ -291,7 +291,8 @@ Steps:
    `git push -u origin main`) and confirm the workflow file landed on `main`.
 2. Bump the version **everywhere it appears** (keep them in sync):
    `package.json`, `desktop/src-tauri/tauri.conf.json`, and
-   `desktop/src-tauri/Cargo.toml` (all `0.1.0` today).
+   `desktop/src-tauri/Cargo.toml` (+ `Cargo.lock`, via
+   `cargo update -p sneakernet`).
 3. Commit, then tag and push the tag:
    ```sh
    git tag v0.1.0
