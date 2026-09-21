@@ -88,7 +88,7 @@
 					size="sm"
 					class="h-7 w-7 p-0 text-muted-foreground"
 					onclick={() => (app.desktopSettingsOpen = true)}
-					title="Desktop settings (root directory, network access)"
+					title="Desktop settings (network access)"
 				>
 					<MonitorCog class="size-4" />
 				</Button>

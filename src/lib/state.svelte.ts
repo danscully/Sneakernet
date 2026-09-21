@@ -268,7 +268,13 @@ export class AppState {
 	}
 
 	get selectedCount(): number {
-		return Object.keys(this.selection).length;
+		// Deselected rows keep an empty array in the map (cheaper than
+		// deleting the key); only rows with something selected count here.
+		let count = 0;
+		for (const ids of Object.values(this.selection)) {
+			if (ids.length > 0) count += 1;
+		}
+		return count;
 	}
 
 	get selectedBytes(): number {
@@ -384,6 +390,16 @@ export class AppState {
 		this.sets = existing
 			? this.sets.map((s) => (s.id === data.set.id ? data.set : s))
 			: [...this.sets, data.set];
+		// Keep the File List header (destination names + groups) in sync with
+		// the saved set - the plan holds a snapshot from compare time, so
+		// without this a group change would not show up until the next Compare
+		// (and a re-compare would discard the user's current selection).
+		if (this.plan && this.plan.setId === data.set.id) {
+			this.plan = {
+				...this.plan,
+				destinations: $state.snapshot(data.set.destinations) as DestinationConfig[]
+			};
+		}
 		this.draft = $state.snapshot(data.set) as SyncSet;
 		this.draftJson = JSON.stringify(data.set);
 		this.activeSetId = data.set.id;
@@ -497,21 +513,54 @@ export class AppState {
 		return ids.length > 0 && ids.every((id) => this.isSelected(relPath, id));
 	}
 
-	toggleRow(relPath: string): void {
-		if (!this.plan) return;
-		const ids = actionableDestIds(this.plan, relPath);
-		if (this.rowIsFullySelected(relPath)) {
-			this.selection[relPath] = [];
-		} else {
-			this.selection[relPath] = [...ids];
-		}
+	/** Does this row have a copy/delete decision for this destination? */
+	isCellActionable(relPath: string, destId: string): boolean {
+		if (!this.plan) return false;
+		const decision = this.plan.items.find((i) => i.relPath === relPath)?.dests[destId];
+		return !!decision && decision.action !== 'same';
 	}
 
-	toggleCell(relPath: string, destId: string): void {
+	/** Select (or clear) every actionable destination cell of one row. */
+	setRowSelection(relPath: string, selected: boolean): void {
+		if (!this.plan) return;
+		this.selection[relPath] = selected ? actionableDestIds(this.plan, relPath) : [];
+	}
+
+	/** Select (or deselect) one destination cell of one row. */
+	setCellSelection(relPath: string, destId: string, selected: boolean): void {
 		const current = this.selection[relPath] ?? [];
-		this.selection[relPath] = current.includes(destId)
-			? current.filter((id) => id !== destId)
-			: [...current, destId];
+		this.selection[relPath] = selected
+			? [...new Set([...current, destId])]
+			: current.filter((id) => id !== destId);
+	}
+
+	/**
+	 * Tri-state of one destination across every actionable row of the plan:
+	 * 'all' | 'some' | 'none'. Drives the per-destination header checkbox.
+	 */
+	destSelectionState(destId: string): 'all' | 'some' | 'none' {
+		if (!this.plan) return 'none';
+		let any = false;
+		let every = true;
+		for (const item of this.plan.items) {
+			if (!this.isCellActionable(item.relPath, destId)) continue;
+			if (this.isSelected(item.relPath, destId)) any = true;
+			else every = false;
+		}
+		return any ? (every ? 'all' : 'some') : 'none';
+	}
+
+	/**
+	 * Select (or clear) one destination for every actionable row - the
+	 * per-destination header checkbox applies to all files at once.
+	 */
+	setDestAll(destId: string, selected: boolean): void {
+		if (!this.plan) return;
+		for (const item of this.plan.items) {
+			if (this.isCellActionable(item.relPath, destId)) {
+				this.setCellSelection(item.relPath, destId, selected);
+			}
+		}
 	}
 
 	selectAll(): void {

@@ -59,6 +59,68 @@
 	});
 
 
+	// --- Row selection (multi-select) ------------------------------------------
+	// Click a row to select it; shift-click selects a range, cmd/ctrl-click
+	// toggles single rows. Changing a sync checkbox while its row is part of
+	// the selection applies the change to every selected row.
+	let selectedRows = $state<string[]>([]);
+	let anchor: string | null = null;
+
+	const sortedPaths = $derived(sortedItems.map((i) => i.relPath));
+
+	// A new plan (compare / set change) invalidates the row selection.
+	$effect(() => {
+		void app.plan?.id;
+		selectedRows = [];
+		anchor = null;
+	});
+
+	function onRowClick(e: MouseEvent, relPath: string): void {
+		// Clicks on interactive elements (checkboxes) drive their own logic.
+		if ((e.target as HTMLElement).closest('button,[role=checkbox],input,label,a')) return;
+		if (e.shiftKey && anchor !== null) {
+			const a = sortedPaths.indexOf(anchor);
+			const b = sortedPaths.indexOf(relPath);
+			if (a !== -1 && b !== -1) {
+				const [lo, hi] = a < b ? [a, b] : [b, a];
+				selectedRows = sortedPaths.slice(lo, hi + 1);
+				return; // keep the anchor for further shift-clicks
+			}
+		}
+		if (e.metaKey || e.ctrlKey) {
+			selectedRows = selectedRows.includes(relPath)
+				? selectedRows.filter((p) => p !== relPath)
+				: [...selectedRows, relPath];
+			anchor = relPath;
+			return;
+		}
+		selectedRows = [relPath];
+		anchor = relPath;
+	}
+
+	/**
+	 * Rows a checkbox change applies to: the clicked row alone, or the whole
+	 * multi-selection when the clicked row is part of it.
+	 */
+	function targetsFor(relPath: string): string[] {
+		return selectedRows.includes(relPath) ? selectedRows : [relPath];
+	}
+
+	/** Row checkbox: select / clear every actionable cell of the row(s). */
+	function onRowCheckbox(item: PlanItem): void {
+		const makeSelected = !app.rowIsFullySelected(item.relPath);
+		for (const t of targetsFor(item.relPath)) app.setRowSelection(t, makeSelected);
+	}
+
+	/** Destination cell checkbox: apply to the row(s), skipping rows where
+	 * this destination has nothing to do ('same' decision). */
+	function onCellCheckbox(item: PlanItem, destId: string): void {
+		const makeSelected = !app.isSelected(item.relPath, destId);
+		for (const t of targetsFor(item.relPath)) {
+			if (app.isCellActionable(t, destId)) app.setCellSelection(t, destId, makeSelected);
+		}
+	}
+
 	// --- Row helpers -----------------------------------------------------------
 	function name(item: PlanItem): string {
 		const parts = item.relPath.split('/');
@@ -85,7 +147,7 @@
 	<Table.Root class="sn-dense w-full caption-bottom">
 		<Table.Header>
 			<Table.Row class="hover:bg-transparent">
-				<Table.Head class="w-8 text-center">Sel</Table.Head>
+				<Table.Head class="w-8 text-center" title="Select rows to change them together: click a row, shift-click for a range, cmd/ctrl-click to toggle. Checkbox changes then apply to every selected row.">Sel</Table.Head>
 				<Table.Head class="w-40">
 					<button
 						type="button"
@@ -131,8 +193,15 @@
 					</button>
 				</Table.Head>
 				{#each dests as dest (dest.id)}
+					{@const destState = app.destSelectionState(dest.id)}
 					<Table.Head class="w-20 text-center">
 						<div class="flex flex-col items-center gap-0.5">
+							<Checkbox
+								checked={destState === 'all'}
+								indeterminate={destState === 'some'}
+								onCheckedChange={() => app.setDestAll(dest.id, destState !== 'all')}
+								aria-label={`${dest.name}: select or clear this destination for all files`}
+							/>
 							<span class="max-w-24 truncate" title={`${dest.name} — ${dest.path}`}>
 								{dest.name}
 							</span>
@@ -146,17 +215,21 @@
 			{#each sortedItems as item (item.relPath)}
 				{@const isRowSelected = app.rowIsFullySelected(item.relPath)}
 				{@const someSelected = (app.selection[item.relPath] ?? []).length > 0}
+				{@const rowSel = selectedRows.includes(item.relPath)}
 				<Table.Row
 					class={cn(
+						'cursor-pointer',
 						item.isDir && 'text-muted-foreground',
-						someSelected && !isRowSelected && 'bg-accent/30'
+						someSelected && !isRowSelected && !rowSel && 'bg-accent/30',
+						rowSel && 'bg-primary/15 outline outline-1 -outline-offset-1 outline-primary/30'
 					)}
+					onclick={(e) => onRowClick(e, item.relPath)}
 				>
 					<Table.Cell class="text-center">
 						<Checkbox
 							checked={isRowSelected}
 							indeterminate={someSelected && !isRowSelected}
-							onCheckedChange={() => app.toggleRow(item.relPath)}
+							onCheckedChange={() => onRowCheckbox(item)}
 							aria-label="Select row"
 						/>
 					</Table.Cell>
@@ -203,7 +276,7 @@
 									</span>
 									<Checkbox
 										checked={selected}
-										onCheckedChange={() => app.toggleCell(item.relPath, dest.id)}
+										onCheckedChange={() => onCellCheckbox(item, dest.id)}
 										aria-label={`${dest.name}: ${decision.action}`}
 									/>
 								</div>
