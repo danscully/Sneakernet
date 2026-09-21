@@ -1,7 +1,5 @@
 import { json } from '@sveltejs/kit';
-import path from 'node:path';
 import type { RequestHandler } from './$types';
-import { ROOT } from '$lib/server/config';
 import {
 	desktopMode,
 	isDesktopHost,
@@ -10,12 +8,16 @@ import {
 } from '$lib/server/desktop';
 
 /**
- * Desktop-app settings (`desktop-settings.json`, owned by the Tauri shell).
+ * Desktop-app settings (`desktop-settings.json`, owned by the Tauri shell):
+ * LAN sharing and its port. The shell picks up file changes and restarts
+ * the server with the new binding.
  *
- * These endpoints are the ONLY client-facing way to change the sync root and
- * LAN sharing, and they are restricted to the desktop app's own webview:
- * requests that do not come from the loopback interface are refused with 403,
- * so remote users (even with the LAN access link) can never alter them.
+ * These endpoints are restricted to the desktop app's own webview
+ * (desktop mode + loopback): requests that do not come from the loopback
+ * interface are refused with 403, so remote users (even with the LAN
+ * access link) can never alter them. The file also carries a legacy
+ * `rootDirectory` field (owned by the shell); it is no longer part of the
+ * API since the root-directory concept was removed.
  */
 
 export const GET: RequestHandler = async (event) => {
@@ -29,9 +31,6 @@ export const GET: RequestHandler = async (event) => {
 	return json({
 		lanSharing: settings?.lanSharing ?? false,
 		lanPort: settings?.lanPort ?? 8787,
-		rootDirectory: settings?.rootDirectory ?? null,
-		// The effective root (shell default when rootDirectory is null).
-		root: ROOT,
 		// Set by the desktop shell when LAN sharing is enabled.
 		lanUrl: process.env['SNEAKERNET_LAN_URL'] ?? null
 	});
@@ -47,11 +46,10 @@ export const PUT: RequestHandler = async (event) => {
 	const body = (await event.request.json().catch(() => null)) as {
 		lanSharing?: unknown;
 		lanPort?: unknown;
-		rootDirectory?: unknown;
 	} | null;
 	if (!body) return json({ error: 'invalid JSON body' }, { status: 400 });
 
-	const update: { lanSharing?: boolean; lanPort?: number; rootDirectory?: string | null } = {};
+	const update: { lanSharing?: boolean; lanPort?: number } = {};
 	if (body.lanSharing !== undefined) {
 		if (typeof body.lanSharing !== 'boolean') {
 			return json({ error: 'lanSharing must be a boolean' }, { status: 400 });
@@ -65,15 +63,6 @@ export const PUT: RequestHandler = async (event) => {
 		}
 		update.lanPort = port;
 	}
-	if (body.rootDirectory !== undefined) {
-		if (body.rootDirectory === null) {
-			update.rootDirectory = null;
-		} else if (typeof body.rootDirectory !== 'string' || !path.isAbsolute(body.rootDirectory)) {
-			return json({ error: 'rootDirectory must be an absolute path (or null)' }, { status: 400 });
-		} else {
-			update.rootDirectory = body.rootDirectory;
-		}
-	}
 	if (Object.keys(update).length === 0) {
 		return json({ error: 'no settings to update' }, { status: 400 });
 	}
@@ -83,6 +72,6 @@ export const PUT: RequestHandler = async (event) => {
 		return json({ error: 'could not write the desktop settings file' }, { status: 500 });
 	}
 	// The shell watches the settings file and restarts the server (rebinding
-	// it and switching the root) within ~1s of this write.
+	// it) within ~1s of this write.
 	return json({ ok: true, restarting: true });
 };

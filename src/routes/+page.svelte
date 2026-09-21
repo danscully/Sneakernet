@@ -356,28 +356,18 @@
 				Sync Set Settings{#if app.draft} — {app.draft.name}{/if}
 			</Dialog.Title>
 			<Dialog.Description class="text-xs">
-				All directories live under the root configured on the server.
+				{#if app.localUser}
+					Source and destination directories are absolute paths chosen with the native
+					folder picker.
+				{:else}
+					Directories are fixed; remote users can change the other settings only.
+				{/if}
 			</Dialog.Description>
 		</Dialog.Header>
 		<!-- Settings body: bounded scroll region with a persistent scrollbar;
 			the header above and the footer below stay fixed. -->
 		<ScrollArea type="always" class="min-h-0 flex-1">
 			<div class="flex flex-col gap-4 p-4 text-xs">
-				<div class="grid gap-1.5">
-					<Label for="root-path">Root directory (server configuration, read-only)</Label>
-					<Input
-						id="root-path"
-						class="h-7 cursor-not-allowed font-mono text-xs opacity-90"
-						value={app.rootPath ?? '…'}
-						disabled
-						aria-readonly="true"
-					/>
-					<p class="text-[10px] text-muted-foreground">
-						{app.desktopHost
-							? 'Change the root from the Desktop Settings dialog (cog/monitor icon in the header).'
-							: 'Configured via config.json or the SNEAKERNET_ROOT environment variable on the server.'}
-					</p>
-				</div>
 				{#if app.lanUrl}
 					<div class="grid gap-1.5">
 						<Label for="lan-url">Network access (currently enabled)</Label>
@@ -400,18 +390,21 @@
 		<Dialog.Footer
 			class="m-0 flex shrink-0 flex-row items-center justify-between gap-2 border-t bg-muted/30 p-3 sm:justify-between"
 		>
-			<!-- Set actions, left-justified -->
+			<!-- Set actions, left-justified. Copy/Import create brand-new sets
+				(which requires choosing directories), so they are local-user-only. -->
 			<div class="flex flex-wrap items-center gap-1.5">
-				<Button
-					variant="outline"
-					size="sm"
-					class="h-7"
-					onclick={() => app.duplicateSet()}
-					title="Duplicate this sync set as a new one"
-					disabled={!app.draft}
-				>
-					<Copy class="size-3.5" /> Copy
-				</Button>
+				{#if app.localUser}
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-7"
+						onclick={() => app.duplicateSet()}
+						title="Duplicate this sync set as a new one"
+						disabled={!app.draft}
+					>
+						<Copy class="size-3.5" /> Copy
+					</Button>
+				{/if}
 				<Button
 					variant="outline"
 					size="sm"
@@ -438,15 +431,17 @@
 				>
 					<Download class="size-3.5" /> Export
 				</Button>
-				<Button
-					variant="outline"
-					size="sm"
-					class="h-7"
-					onclick={() => importInput?.click()}
-					title="Import a sync set from a JSON file"
-				>
-					<Upload class="size-3.5" /> Import
-				</Button>
+				{#if app.localUser}
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-7"
+						onclick={() => importInput?.click()}
+						title="Import a sync set from a JSON file"
+					>
+						<Upload class="size-3.5" /> Import
+					</Button>
+				{/if}
 				<input
 					bind:this={importInput}
 					type="file"

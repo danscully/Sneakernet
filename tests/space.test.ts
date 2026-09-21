@@ -2,9 +2,9 @@
  * Free-space accounting for the pre-sync warning.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import fs from 'node:fs/promises';
 import type { ComparePlan, PlanItem } from '../src/lib/types';
 import { checkDestinations, diskSpace, MIN_FREE_BYTES, requiredBytesPerDest } from '../src/lib/server/space';
+import { absPath } from '../src/lib/server/paths';
 import { mkdirp, rmrf } from './helpers';
 
 const NS = 'space-test';
@@ -38,10 +38,10 @@ function fakePlan(dests: { id: string; name: string; path: string }[]): CompareP
 		setId: 'test-set',
 		setName: 'Test',
 		createdAt: Date.now(),
-		source: 'src',
+		source: absPath('src'),
 		dateDeltaSeconds: 0,
 		syncDeletions: true,
-		destinations: dests.map((d) => ({ ...d, group: 1 })),
+		destinations: dests.map((d) => ({ ...d, path: absPath(d.path), group: 1 })),
 		items
 	};
 }
@@ -52,14 +52,14 @@ beforeAll(async () => {
 });
 
 describe('space', () => {
-	it('diskSpace reports free space for an existing directory', async () => {
-		const space = await diskSpace(`${NS}/dst`);
+	it('diskSpace reports free space for an existing absolute directory', async () => {
+		const space = await diskSpace(absPath(`${NS}/dst`));
 		expect(space.free).toBeGreaterThan(0);
 		expect(space.total).toBeGreaterThan(0);
 	});
 
 	it('diskSpace walks up for missing directories', async () => {
-		const space = await diskSpace(`${NS}/missing/also-missing`);
+		const space = await diskSpace(absPath(`${NS}/missing/also-missing`));
 		expect(space.free).toBeGreaterThan(0);
 	});
 

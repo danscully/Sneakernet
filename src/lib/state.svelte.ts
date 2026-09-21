@@ -111,9 +111,6 @@ export function newSyncSet(): SyncSet {
 export interface DesktopSettingsView {
 	lanSharing: boolean;
 	lanPort: number;
-	rootDirectory: string | null;
-	/** The effective sync root (shell default when rootDirectory is null). */
-	root: string;
 	lanUrl: string | null;
 }
 
@@ -189,8 +186,10 @@ export class AppState {
 	/** Ticker so elapsed/remaining displays stay live while running. */
 	now = $state(Date.now());
 
-	/** Absolute path of the sync root (from the server deployment config). */
-	rootPath: string | null = $state(null);
+	/** True when this client connected over loopback (desktop webview, dev
+	 * browser, or the operator at a standalone server). Only local users
+	 * may change a sync set's source/destination directories. */
+	localUser = $state(false);
 
 	/** Full LAN access link when the server is in sharing mode, else null. */
 	lanUrl: string | null = $state(null);
@@ -222,18 +221,18 @@ export class AppState {
 		return this.sets.find((s) => s.id === this.activeSetId) ?? null;
 	}
 
-	/** Fetch the absolute sync root path (read-only info for the UI). */
-	async loadRoot(): Promise<void> {
+	/** Fetch read-only server info (LAN link, desktop/local client flags). */
+	async loadConfig(): Promise<void> {
 		const res = await fetch('/api/config');
 		if (!res.ok) return;
 		const data = (await res.json()) as {
-			root: string;
 			lanUrl?: string | null;
 			desktopHost?: boolean;
+			localUser?: boolean;
 		};
-		this.rootPath = data.root;
 		this.lanUrl = data.lanUrl ?? null;
 		this.desktopHost = data.desktopHost ?? false;
+		this.localUser = data.localUser ?? false;
 	}
 
 	// --- Desktop app settings (Tauri webview only) ---------------------------
@@ -250,11 +249,7 @@ export class AppState {
 	 * restarts the server (which re-navigates the webview). Returns true on
 	 * success; failures surface as a toast.
 	 */
-	async saveDesktopSettings(update: {
-		lanSharing?: boolean;
-		lanPort?: number;
-		rootDirectory?: string | null;
-	}): Promise<boolean> {
+	async saveDesktopSettings(update: { lanSharing?: boolean; lanPort?: number }): Promise<boolean> {
 		const res = await fetch('/api/desktop/settings', {
 			method: 'PUT',
 			headers: { 'content-type': 'application/json' },

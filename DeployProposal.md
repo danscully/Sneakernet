@@ -13,9 +13,11 @@ terminal, no Node.js, no manual native-module compilation.
    it must be **prebuilt per platform** and bundled with the installer
    (N-API/Node-API guarantees binary compatibility across Node versions, so
    one build per OS/arch is enough).
-3. The **sync root** and data directory must live in user-writable,
-   per-user locations (e.g. `~/Documents/Sneakernet` or the user's chosen
-   folder on first run) — never inside the app bundle.
+3. The per-user **data directory** (sync sets, logs) must live in a
+   user-writable, per-user location — never inside the app bundle. (Sync
+   sources/destinations are ordinary absolute folders the user picks per
+   sync set with the native directory picker; there is no app-owned
+   "sync root" anymore.)
 
 ## Recommendation (in order of preference)
 
@@ -24,8 +26,7 @@ terminal, no Node.js, no manual native-module compilation.
 **Status:** the Tauri shell is implemented in `desktop/` and builds locally
 (`npm run desktop:build` on macOS; see the README "Desktop app (Tauri)"
 section). Remaining for a production launch: code signing + notarization
-secrets in CI, and the optional first-run wizard (the sync root currently
-defaults to `<app-data>/sync-root`, configurable via `config.json`).
+secrets in CI.
 
 Package the existing Node server + the UI as a desktop application using
 **Tauri** (preferred) or **Electron**:
@@ -33,8 +34,10 @@ Package the existing Node server + the UI as a desktop application using
 > LAN sharing is implemented as an opt-in feature of the Tauri shell: the
 > in-app Desktop Settings dialog (loopback-only, never accessible to remote
 > users) can expose the embedded server to the network on a stable port
-> (default 8787) behind a token-protected shareable access link, and also
-> selects the sync root. The server binds localhost only when sharing is off.
+> (default 8787) behind a token-protected shareable access link. The server
+> binds localhost only when sharing is off. Directory picking is done with
+> the OS-native chooser in the app window; remote users cannot change
+> directories.
 
 - The server runs as a **hidden background process** (sidecar) started by the
   shell; the UI opens in the shell's webview instead of the system browser
@@ -47,11 +50,10 @@ Package the existing Node server + the UI as a desktop application using
   `.msi`/`.exe` (NSIS or WiX) for Windows. Code-sign both (Apple Developer ID
   + notarization; Windows Authenticode) so installers don't scare users with
   security warnings.
-- **First-run wizard:** ask where the sync root should live (default
-  `~/Documents/Sneakernet` or `Documents\Sneakernet`), create it, and write
-  `config.json` into the OS user-data directory
-  (`~/Library/Application Support/Sneakernet`, `%APPDATA%\Sneakernet`).
-  This removes the only "server configuration" step end users would face.
+- ~~**First-run wizard:**~~ no longer needed — there is no sync root to
+  choose; the user picks ordinary folders per sync set in the app. (Earlier
+  versions asked where the sync root should live; that concept was
+  removed in favor of absolute, native-picked directories.)
 - **Auto-update:** built-in updater (Tauri updater / electron-updater /
   Squirrel) so users never re-download installs. Updates ship new server
   code and new prebuilt addons together — they always match.
@@ -88,7 +90,8 @@ Compile the server into one native executable using **Bun's `--compile`**
 For users who want Sneakernet running on a NAS or home server:
 
 - Provide a **Docker image** (`ghcr.io/…/sneakernet`) with the native addon
-  prebuilt for linux/amd64+arm64, volumes for the sync root and data dir.
+  prebuilt for linux/amd64+arm64, a volume for the data dir (sync sets and
+  logs); synced source/destination folders are bind-mounted host paths.
 - Provide a one-click **Compose template** and, ideally, an app package for
   the common consumer NAS platforms (Synology DSM Package Center, QNAP
   Qstore) — this is what non-technical NAS users expect.

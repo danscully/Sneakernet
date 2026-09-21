@@ -3,10 +3,11 @@
  * import/export of sync sets as JSON files is supported at the API layer.
  */
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { DestinationConfig, SyncSet } from '$lib/types';
 import { SYNCSETS_FILE } from './config';
-import { sanitizeRelPath } from './paths';
+import { resolveLegacyPath, validateAbsolutePath } from './paths';
 import { normalizeFilterList } from './filters';
 
 interface SyncSetsFile {
@@ -32,11 +33,10 @@ export function validateSyncSet(input: unknown, existingIds: Set<string>): SyncS
 
 	let source: string;
 	try {
-		source = sanitizeRelPath(String(raw['source'] ?? ''));
+		source = validateAbsolutePath(String(raw['source'] ?? ''));
 	} catch (e) {
 		throw new ValidationError(e instanceof Error ? e.message : 'invalid source path');
 	}
-	if (source === '') throw new ValidationError('source is required');
 
 	const policy = String(raw['errorPolicy'] ?? 'ask');
 	if (!['stop', 'ignore', 'ask'].includes(policy)) {
@@ -62,11 +62,10 @@ export function validateSyncSet(input: unknown, existingIds: Set<string>): SyncS
 		if (!dName) throw new ValidationError('destination name is required');
 		let dPath: string;
 		try {
-			dPath = sanitizeRelPath(String(d['path'] ?? ''));
+			dPath = validateAbsolutePath(String(d['path'] ?? ''));
 		} catch (e) {
 			throw new ValidationError(e instanceof Error ? e.message : 'invalid destination path');
 		}
-		if (dPath === '') throw new ValidationError('destination path is required');
 		if (seenPaths.has(dPath)) throw new ValidationError(`duplicate destination path: ${dPath}`);
 		if (dPath === source) throw new ValidationError('destination path must differ from source');
 		seenPaths.add(dPath);
@@ -109,16 +108,48 @@ export function validateSyncSet(input: unknown, existingIds: Set<string>): SyncS
 
 let cache: SyncSet[] | null = null;
 
+/** Test helper: forget the cached sets so the next listSets() re-reads the file. */
+export function resetCacheForTests(): void {
+	cache = null;
+}
+
+/**
+ * One-time migration: older versions stored root-relative paths; resolve
+ * them against the legacy root so every set in memory (and on disk) uses
+ * absolute paths. Returns true when anything changed.
+ */
+function migrateToAbsolute(sets: SyncSet[]): boolean {
+	let changed = false;
+	for (const set of sets) {
+		if (typeof set.source === 'string' && !path.isAbsolute(set.source)) {
+			set.source = resolveLegacyPath(set.source);
+			changed = true;
+		}
+		for (const d of set.destinations ?? []) {
+			if (typeof d?.path === 'string' && !path.isAbsolute(d.path)) {
+				d.path = resolveLegacyPath(d.path);
+				changed = true;
+			}
+		}
+	}
+	return changed;
+}
+
 export async function listSets(): Promise<SyncSet[]> {
 	if (cache) return cache;
+	let sets: SyncSet[] = [];
 	try {
 		const raw = await fs.readFile(SYNCSETS_FILE, 'utf8');
 		const parsed = JSON.parse(raw) as SyncSetsFile;
-		cache = parsed.sets.filter((s) => typeof s.id === 'string');
+		sets = parsed.sets.filter((s) => typeof s.id === 'string');
 	} catch {
-		cache = [];
+		sets = [];
 	}
-	return cache;
+	// Migrate legacy root-relative paths once, then rewrite the file so the
+	// change sticks.
+	if (migrateToAbsolute(sets)) await persist(sets);
+	cache = sets;
+	return sets;
 }
 
 async function persist(sets: SyncSet[]): Promise<void> {

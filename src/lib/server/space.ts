@@ -4,7 +4,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ComparePlan } from '$lib/types';
-import { absPath } from './paths';
 import type { Selection } from './engine';
 
 /** Warn when a destination would have less than this much space left. */
@@ -17,24 +16,25 @@ export interface SpaceInfo {
 }
 
 /**
- * Free / total bytes of a directory (or the nearest existing ancestor - new
- * destinations may not exist yet).
+ * Free / total bytes of an absolute directory path (or its nearest
+ * existing ancestor - new destinations may not exist yet).
  */
-export async function diskSpace(relPath: string): Promise<SpaceInfo> {
-	let rel = relPath;
-	// Walk up until we find an existing directory (destinations may not exist yet).
+export async function diskSpace(absPathStr: string): Promise<SpaceInfo> {
+	let p = path.resolve(absPathStr);
+	// Walk up until we find an existing directory. dirname(x) === x at the
+	// filesystem root, which terminates the loop on every platform.
 	for (;;) {
 		try {
-			const st = await fs.statfs(absPath(rel));
+			const st = await fs.statfs(p);
 			return {
 				free: Number(st.bavail) * Number(st.bsize),
 				total: Number(st.blocks) * Number(st.bsize),
-				path: rel
+				path: p
 			};
 		} catch {
-			if (rel === '') return { free: 0, total: 0, path: '' };
-			const parent = path.posix.dirname(rel);
-			rel = parent === '.' ? '' : parent;
+			const parent = path.dirname(p);
+			if (parent === p) return { free: 0, total: 0, path: p };
+			p = parent;
 		}
 	}
 }

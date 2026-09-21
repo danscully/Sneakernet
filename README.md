@@ -33,9 +33,13 @@ APFS `clonefile` fast path) with progress streamed back into the UI.
   remaining time, copied / remaining bytes, progress bar, files done/total.
   Stop buttons per destination and for the whole run. Stopping cleans up
   temp files.
-- **Path safety** — all directories live under a single root path from the
-  server deployment config; user-entered paths are sanitized and cannot escape
-  it.
+- **Absolute paths, local-only changes** — every sync set stores absolute
+  source/destination paths, chosen on the machine running the server with
+  the OS-native directory picker. Only local users (loopback connections:
+  the desktop app's webview, the dev browser, the operator at a standalone
+  server) may create sets or change their directories; remote LAN users can
+  change the other settings only. Old root-relative data is migrated to
+  absolute paths once on load.
 - **Destination semaphore** — a lock file (`.sneakernet-lock`) at each destination
   root prevents two syncs from targeting the same directory at once. The
   holder touches it every 5 seconds; a sync that finds a lock reports
@@ -99,7 +103,7 @@ directory → default.
 
 | Setting | Env var | `config.json` key | Default | Meaning |
 |---|---|---|---|---|
-| Sync root | `SNEAKERNET_ROOT` | `root` | `./data/root` | All source/destination directories must live under this |
+| Legacy root | `SNEAKERNET_ROOT` | `root` | `./data/root` | Migration base only: old root-relative sync-set paths are resolved against it once on load. New data is always absolute |
 | Data dir | `SNEAKERNET_DATA` | `data` | `./data` | Where `syncsets.json` is stored |
 | Native addon | `SNEAKERNET_NATIVE` | — | `./native/build/Release/sneakernet_native.node` | Path to the `.node` binary |
 | Disable clone | `SNEAKERNET_NO_CLONE=1` | — | off | Force the chunked copy loop (progress even on APFS) |
@@ -112,7 +116,6 @@ Example `config.json`:
 
 ```json
 {
-  "root": "/Volumes/Media/sync-root",
   "logRetentionDays": 7
 }
 ```
@@ -120,10 +123,12 @@ Example `config.json`:
 ## Using the app
 
 1. Pick a sync set from the header dropdown (or **Create New SyncSet...** below
-   the divider in that dropdown). The left sidebar summarizes the set; press
-   **Edit** to open the settings modal and set the **source directory** and
-   **destinations** (paths are relative to the root; the folder icon browses
-   and can create new subdirectories). Give each destination a **group** if
+   the divider in that dropdown — local users only; remote users cannot
+   create sets). The left sidebar summarizes the set; press **Edit** to open
+   the settings modal and set the **source directory** and **destinations**
+   (absolute paths; the folder icon opens the OS-native directory picker —
+   available only to local users; remote users see the directories read-only
+   and can change the other settings). Give each destination a **group** if
    you want ordering.
 2. Configure options: datestamp delta (seconds), sync deletions, error policy,
    include/exclude filters.
@@ -158,8 +163,8 @@ The app ships as a native desktop application (Option A of
   the UI in a native window;
 - per-user data lives in the OS application-support directory
   (`~/Library/Application Support/com.sneakernet.desktop` on macOS,
-  `%APPDATA%\com.sneakernet.desktop` on Windows): `sync-root/` is the sync
-  root, `app-data/` holds sync sets and logs;
+  `%APPDATA%\com.sneakernet.desktop` on Windows): `app-data/` holds sync
+  sets and logs (`sync-root/` remains as the legacy migration base);
 - closing the window **quits the whole app**: a native confirmation dialog
   warns first that quitting stops the sync engine and any in-progress syncs
   (**Quit** / **Cancel**). Cmd+Q and the Dock's Quit confirm the same way;
@@ -226,9 +231,6 @@ The embedded server binds **localhost only** by default. The **Desktop
 Settings** dialog — opened with the cog/monitor icon in the app window's
 header — manages the machine's settings:
 
-- **Root directory**: pick the sync root from any absolute path on disk (the
-  picker can browse anywhere; a directory picker also offers to create new
-  subdirectories when picking sources/destinations inside the root);
 - **Allow access from other devices**: when enabled, the server restarts
   bound to all interfaces on a stable port (default **8787**, editable next
   to the switch, with an automatic fallback if the port is taken);
@@ -245,7 +247,11 @@ header — manages the machine's settings:
 The Desktop Settings dialog and its `/api/desktop/*` endpoints are visible
 and usable **only inside the app window** (loopback + desktop mode);
 remote users — even with the access link — get a 403 and cannot change the
-root, the port, or LAN sharing. Remote users also see the "Sneakernet"
+port or LAN sharing. Likewise, creating sync sets and changing a set's
+source/destination directories is limited to local (loopback) users —
+remote users may edit the other settings only, and `/api/space` answers
+only for paths registered as a sync destination, so remote users cannot
+probe arbitrary disks. Remote users also see the "Sneakernet"
 page title, which is hidden in the app window (the window title already
 shows it).
 
@@ -334,8 +340,8 @@ native/fastcopy.cc        N-API addon: copy (chunked pread/pwrite + clonefile fa
                           callbacks via AsyncProgressQueueWorker
 src/lib/server/
   native.ts               typed wrapper around the addon
-  config.ts               root/data dir resolution
-  paths.ts                path sanitization (root confinement)
+  config.ts               data dir + legacy root resolution
+  paths.ts                absolute-path validation (+ legacy root-relative helpers)
   filters.ts              include/exclude pattern matching (* wildcards)
   walker.ts               directory walker used by Compare
   compare.ts              parallel Compare planner
@@ -346,8 +352,9 @@ src/lib/server/
   logger.ts               per-run sync log files + retention cleanup
 src/lib/types.ts          shared client/server types
 src/lib/state.svelte.ts   client state (Svelte 5 runes) + SSE handling
-src/lib/components/       app components (CompareTable, DestCard, PathPicker,
-                          ConfirmDialog, SyncSetEditor) + shadcn-svelte UI kit
+src/lib/components/       app components (CompareTable, DestCard,
+                          ConfirmDialog, SyncSetEditor; PathPicker retained
+                          but unused) + shadcn-svelte UI kit
 src/routes/api/            REST endpoints + /api/sync/stream (SSE)
 tests/                    vitest suites: native addon, filters, paths, compare,
                           engine (copy/delete/errors/stops/groups), persistence
@@ -357,18 +364,18 @@ tests/                    vitest suites: native addon, filters, paths, compare,
 
 | Method & path | Purpose |
 |---|---|
-| `GET/POST /api/syncsets` | list / create |
-| `GET/PUT/DELETE /api/syncsets/[id]` | fetch / update / delete |
+| `GET/POST /api/syncsets` | list / create (POST: local users only) |
+| `GET/PUT/DELETE /api/syncsets/[id]` | fetch / update (path changes: local users only) / delete |
 | `POST /api/compare` | run a Compare (returns the plan) |
 | `GET /api/compare?setId=` | fetch the latest plan |
 | `POST /api/sync/start` | start syncing a selection |
 | `POST /api/sync/stop` | stop one destination (`destId`) or all (`null`) |
 | `POST /api/sync/confirm` | answer a pause prompt |
 | `GET /api/sync/stream?setId=` | SSE event stream (+ initial snapshot) |
-| `GET /api/tree?path=` | directory listing under the root (path picker) |
-| `POST /api/tree` | create a subdirectory (path picker "Create") |
-| `GET /api/config` | read-only server info (sync root path) |
-| `GET /api/space?path=` | free/total space of a directory (nearest existing ancestor) |
+| `GET /api/tree?path=` | directory listing under the legacy root (unused path picker, retained) |
+| `POST /api/tree` | create a subdirectory under the legacy root (retained) |
+| `GET /api/config` | read-only server info (LAN link, desktop/local client flags) |
+| `GET /api/space?path=` | free/total space of a registered destination (nearest existing ancestor) |
 | `GET /api/logs` | list sync run logs (newest first, with retention info) |
 | `GET /api/logs/[runId]` | full text of one sync run log |
 

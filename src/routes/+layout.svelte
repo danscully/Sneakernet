@@ -14,7 +14,7 @@
 
 	onMount(() => {
 		void app.loadSets();
-		void app.loadRoot();
+		void app.loadConfig();
 		// One global stream for every run - any set, any user (Status view).
 		app.connectStream();
 		const ticker = setInterval(() => (app.now = Date.now()), 250);
@@ -56,8 +56,10 @@
 				{#each app.sets as set (set.id)}
 					<Select.Item value={set.id} label={set.name} />
 				{/each}
-				<Select.Separator />
-				<Select.Item value="__new__">Create New SyncSet...</Select.Item>
+				{#if app.localUser}
+					<Select.Separator />
+					<Select.Item value="__new__">Create New SyncSet...</Select.Item>
+				{/if}
 			</Select.Content>
 		</Select.Root>
 

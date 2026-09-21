@@ -1,34 +1,17 @@
 <script lang="ts">
-	import { Folder, ArrowUp, ArrowLeft } from '@lucide/svelte';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { app } from '$lib/state.svelte';
-	import { cn } from '$lib/utils';
 
 	/**
-	 * Desktop-app settings (LAN sharing + sync root). Mounted in the layout
-	 * but only ever opened from the header button, which the desktop webview
-	 * alone shows - the endpoints behind this dialog are loopback-only.
+	 * Desktop-app settings (LAN sharing). Mounted in the layout but only
+	 * ever opened from the header button, which the desktop webview alone
+	 * shows - the endpoints behind this dialog are loopback-only.
 	 */
 
-	type Step = 'settings' | 'picker';
-
-	interface BrowseDir {
-		name: string;
-		path: string;
-	}
-
-	/** A directly jumpable drive (Windows only; empty elsewhere). */
-	interface Drive {
-		name: string;
-		path: string;
-	}
-
-	let step = $state<Step>('settings');
 	let loading = $state(false);
 	let saving = $state(false);
 	let loadError = $state<string | null>(null);
@@ -36,18 +19,8 @@
 	// Draft + loaded-original values (only changed fields are sent on apply).
 	let lanSharing = $state(false);
 	let lanPort = $state(8787);
-	let rootDirectory = $state<string | null>(null);
-	let root = $state('');
 	let lanUrl = $state<string | null>(null);
-	let orig = $state({ lanSharing: false, lanPort: 8787, rootDirectory: null as string | null });
-
-	// Inline root picker state.
-	let pickerPath = $state('');
-	let pickerParent = $state<string | null>(null);
-	let pickerDirs = $state<BrowseDir[]>([]);
-	let pickerDrives = $state<Drive[]>([]);
-	let pickerLoading = $state(false);
-	let pickerError = $state<string | null>(null);
+	let orig = $state({ lanSharing: false, lanPort: 8787 });
 
 	async function loadSettings(): Promise<void> {
 		loading = true;
@@ -60,84 +33,21 @@
 			}
 			lanSharing = data.lanSharing;
 			lanPort = data.lanPort;
-			rootDirectory = data.rootDirectory;
-			root = data.root;
 			lanUrl = data.lanUrl;
-			orig = { lanSharing: data.lanSharing, lanPort: data.lanPort, rootDirectory: data.rootDirectory };
+			orig = { lanSharing: data.lanSharing, lanPort: data.lanPort };
 		} finally {
 			loading = false;
 		}
 	}
 
-	async function loadPicker(p: string): Promise<void> {
-		pickerLoading = true;
-		pickerError = null;
-		try {
-			const res = await fetch(`/api/desktop/browse?path=${encodeURIComponent(p)}`);
-			const data = (await res.json()) as {
-				path?: string;
-				parent?: string | null;
-				dirs?: BrowseDir[];
-				drives?: Drive[];
-				error?: string;
-			};
-			if (!res.ok) {
-				pickerError = data.error ?? 'could not browse this directory';
-				return;
-			}
-			pickerPath = data.path ?? p;
-			pickerParent = data.parent ?? null;
-			pickerDirs = data.dirs ?? [];
-			pickerDrives = data.drives ?? [];
-		} catch {
-			pickerError = 'could not browse this directory';
-		} finally {
-			pickerLoading = false;
-		}
-	}
-
-	/**
-	 * Try the OS-native directory chooser first (the webview's Tauri IPC
-	 * is loopback-scoped via the capability file). Returns true if the
-	 * native dialog was shown (chosen path applied or cancelled by the
-	 * user); false when the IPC/plugin is unavailable, in which case the
-	 * caller falls back to the in-app HTML picker.
-	 */
-	async function tryNativePicker(): Promise<boolean> {
-		if (!app.desktopHost) return false;
-		try {
-			const { open } = await import('@tauri-apps/plugin-dialog');
-			const picked = await open({
-				directory: true,
-				title: 'Choose the Sneakernet sync root'
-			});
-			if (typeof picked === 'string') rootDirectory = picked;
-			return true; // also covers cancel: the user made their choice
-		} catch {
-			return false; // no Tauri IPC (or plugin blocked) -> HTML picker
-		}
-	}
-
-	async function browseRoot(): Promise<void> {
-		if (await tryNativePicker()) return;
-		// Fallback: the in-app directory browser.
-		step = 'picker';
-		void loadPicker(rootDirectory ?? root);
-	}
-
 	const portValid = $derived(Number.isInteger(lanPort) && lanPort >= 1 && lanPort <= 65535);
-	const changed = $derived(
-		lanSharing !== orig.lanSharing ||
-			(portValid && lanPort !== orig.lanPort) ||
-			rootDirectory !== orig.rootDirectory
-	);
+	const changed = $derived(lanSharing !== orig.lanSharing || (portValid && lanPort !== orig.lanPort));
 
 	async function apply(): Promise<void> {
 		if (!changed || saving || !portValid) return;
-		const update: { lanSharing?: boolean; lanPort?: number; rootDirectory?: string | null } = {};
+		const update: { lanSharing?: boolean; lanPort?: number } = {};
 		if (lanSharing !== orig.lanSharing) update.lanSharing = lanSharing;
 		if (lanPort !== orig.lanPort) update.lanPort = lanPort;
-		if (rootDirectory !== orig.rootDirectory) update.rootDirectory = rootDirectory;
 		saving = true;
 		try {
 			const ok = await app.saveDesktopSettings(update);
@@ -151,10 +61,7 @@
 	}
 
 	$effect(() => {
-		if (app.desktopSettingsOpen) {
-			step = 'settings';
-			void loadSettings();
-		}
+		if (app.desktopSettingsOpen) void loadSettings();
 	});
 </script>
 
@@ -163,197 +70,73 @@
 		<Dialog.Header>
 			<Dialog.Title>Desktop Settings</Dialog.Title>
 			<Dialog.Description class="text-xs">
-				{#if step === 'settings'}
-					Sync root and network access for this machine. Applying changes restarts the app's
-					server (finish any running sync first).
-				{:else}
-					Choose the root directory that contains all synced folders.
-				{/if}
+				Network access for this machine. Applying changes restarts the app's server (finish
+				any running sync first).
 			</Dialog.Description>
 		</Dialog.Header>
 
-		{#if step === 'settings'}
-			<div class="grid gap-4">
-				{#if loading}
-					<p class="text-xs text-muted-foreground">Loading…</p>
-				{:else if loadError}
-					<p class="text-xs text-destructive">{loadError}</p>
-				{:else}
-					<!-- Sync root -->
-					<div class="grid gap-1.5">
-						<Label for="ds-root">Root directory</Label>
-						<div class="flex gap-1.5">
+		<div class="grid gap-4">
+			{#if loading}
+				<p class="text-xs text-muted-foreground">Loading…</p>
+			{:else if loadError}
+				<p class="text-xs text-destructive">{loadError}</p>
+			{:else}
+				<!-- LAN sharing -->
+				<div class="grid gap-1.5">
+					<div class="flex items-center gap-2">
+						<Switch id="ds-lan" bind:checked={lanSharing} />
+						<Label for="ds-lan">Allow access from other devices on this network</Label>
+					</div>
+					<div class="grid gap-1.5 pl-7 {lanSharing ? '' : 'pointer-events-none opacity-50'}">
+						<div class="grid gap-1.5">
+							<Label for="ds-port">Port</Label>
 							<Input
-								id="ds-root"
-								class="h-7 flex-1 font-mono text-xs"
-								value={rootDirectory ?? root}
-								readonly
-								aria-readonly="true"
-								title={rootDirectory
-									? `${rootDirectory} (configured)`
-									: `${root} (app default)`}
+								id="ds-port"
+								class="h-7 w-32 text-xs tabular-nums"
+								type="number"
+								min="1"
+								max="65535"
+								bind:value={lanPort}
+								disabled={!lanSharing}
 							/>
-							<Button
-								variant="outline"
-								size="sm"
-								class="h-7"
-								onclick={() => void browseRoot()}
-								title="Browse for a different root directory"
-							>
-								<Folder class="size-3.5" /> Browse
-							</Button>
-						</div>
-						<p class="text-[10px] text-muted-foreground">
-							{#if rootDirectory !== null && rootDirectory !== orig.rootDirectory}
-								Will become <code class="break-all">{rootDirectory}</code> after applying.
-							{:else}
-								{#if rootDirectory === null}
-									Currently the app default.
-								{/if}
-								All source and destination directories live under the root.
+							{#if lanSharing && !portValid}
+								<p class="text-[10px] text-destructive">Port must be between 1 and 65535.</p>
 							{/if}
+						</div>
+						{#if lanSharing && lanUrl}
+							<div class="grid gap-1.5">
+								<Label for="ds-lan-url">Access link (share only with people you trust)</Label>
+								<Input
+									id="ds-lan-url"
+									class="h-7 font-mono text-xs"
+									value={lanUrl}
+									readonly
+									aria-readonly="true"
+									title="Select and copy this link"
+								/>
+							</div>
+						{/if}
+						<p class="text-[10px] text-muted-foreground">
+							Anyone who opens the access link can view and run syncs on this machine.
+							Share it only on networks and with people you trust.
 						</p>
 					</div>
-
-					<!-- LAN sharing -->
-					<div class="grid gap-1.5">
-						<div class="flex items-center gap-2">
-							<Switch id="ds-lan" bind:checked={lanSharing} />
-							<Label for="ds-lan">Allow access from other devices on this network</Label>
-						</div>
-						<div class="grid gap-1.5 pl-7 {lanSharing ? '' : 'pointer-events-none opacity-50'}">
-							<div class="grid gap-1.5">
-								<Label for="ds-port">Port</Label>
-								<Input
-									id="ds-port"
-									class="h-7 w-32 text-xs tabular-nums"
-									type="number"
-									min="1"
-									max="65535"
-									bind:value={lanPort}
-									disabled={!lanSharing}
-								/>
-								{#if lanSharing && !portValid}
-									<p class="text-[10px] text-destructive">Port must be between 1 and 65535.</p>
-								{/if}
-							</div>
-							{#if lanSharing && lanUrl}
-								<div class="grid gap-1.5">
-									<Label for="ds-lan-url">Access link (share only with people you trust)</Label>
-									<Input
-										id="ds-lan-url"
-										class="h-7 font-mono text-xs"
-										value={lanUrl}
-										readonly
-										aria-readonly="true"
-										title="Select and copy this link"
-									/>
-								</div>
-							{/if}
-							<p class="text-[10px] text-muted-foreground">
-								Anyone who opens the access link can view and run syncs on this machine.
-								Share it only on networks and with people you trust.
-							</p>
-						</div>
-					</div>
-				{/if}
-			</div>
-		{:else}
-			<!-- Inline root picker (absolute paths, outside the current root) -->
-			<div class="grid gap-2">
-				<div class="flex items-center gap-1.5">
-					<Button
-						variant="ghost"
-						size="sm"
-						class="h-7 px-2"
-						disabled={pickerParent === null}
-						onclick={() => pickerParent && void loadPicker(pickerParent)}
-						title="Go to the parent directory"
-					>
-						<ArrowUp class="size-3.5" />
-					</Button>
-					<code class="min-w-0 flex-1 truncate rounded-md border bg-muted/40 px-2 py-1 text-[11px]" title={pickerPath}>
-						{pickerPath}
-					</code>
 				</div>
-				{#if pickerError}
-					<p class="text-xs text-destructive">{pickerError}</p>
-				{/if}
-				<!-- Drives (Windows): "up" stops at a drive root, so volumes are
-					offered as direct jump targets. -->
-				{#if pickerDrives.length > 0}
-					<div class="flex flex-wrap items-center gap-1">
-						<span class="text-[10px] text-muted-foreground">Drives:</span>
-						{#each pickerDrives as drive (drive.path)}
-							<button
-								type="button"
-								class={cn(
-									'rounded-md border px-2 py-0.5 font-mono text-[11px] hover:bg-accent',
-									pickerPath === drive.path && 'bg-accent'
-								)}
-								onclick={() => void loadPicker(drive.path)}
-							>
-								{drive.name}
-							</button>
-						{/each}
-					</div>
-				{/if}
-				<ScrollArea type="always" class="h-64 min-w-0 rounded-md border p-1">
-					{#if pickerLoading}
-						<div class="p-4 text-xs text-muted-foreground">Loading…</div>
-					{:else if pickerDirs.length === 0}
-						<div class="p-4 text-xs text-muted-foreground">No subdirectories.</div>
-					{:else}
-						{#each pickerDirs as dir (dir.path)}
-							<button
-								type="button"
-								class="flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1 text-left text-xs hover:bg-accent"
-								onclick={() => void loadPicker(dir.path)}
-								title={dir.path}
-							>
-								<Folder class="size-3.5 shrink-0 text-muted-foreground" />
-								<!-- min-w-0 lets long folder names shrink instead of pushing
-									the picker wider than the modal -->
-								<span class="min-w-0 truncate">{dir.name}</span>
-							</button>
-						{/each}
-					{/if}
-				</ScrollArea>
-			</div>
-		{/if}
+			{/if}
+		</div>
 
 		<Dialog.Footer class="gap-2">
-			{#if step === 'settings'}
-				<Button
-					variant="outline"
-					size="sm"
-					onclick={() => (app.desktopSettingsOpen = false)}
-					disabled={saving}
-				>
-					Cancel
-				</Button>
-				<Button
-					size="sm"
-					onclick={() => void apply()}
-					disabled={!changed || !portValid || saving}
-				>
-					{#if saving}Applying…{:else}Apply{/if}
-				</Button>
-			{:else}
-				<Button variant="outline" size="sm" onclick={() => (step = 'settings')}>
-					<ArrowLeft class="size-3.5" /> Back
-				</Button>
-				<Button
-					size="sm"
-					onclick={() => {
-						rootDirectory = pickerPath;
-						step = 'settings';
-					}}
-					title="Use this directory as the new root"
-				>
-					Choose this directory
-				</Button>
-			{/if}
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={() => (app.desktopSettingsOpen = false)}
+				disabled={saving}
+			>
+				Cancel
+			</Button>
+			<Button size="sm" onclick={() => void apply()} disabled={!changed || !portValid || saving}>
+				{#if saving}Applying…{:else}Apply{/if}
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

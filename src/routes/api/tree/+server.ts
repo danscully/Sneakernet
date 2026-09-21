@@ -9,7 +9,12 @@ interface TreeDir {
 }
 
 /**
- * List the subdirectories of a path under the sync root (for the path picker).
+ * List the subdirectories of a path under the sync root (for the legacy
+ * path picker).
+ *
+ * NOTE: currently unused by the UI — the root-relative PathPicker component
+ * was replaced by the OS-native directory chooser when absolute paths
+ * replaced the sync-root concept. Retained for rollback/reuse.
  */
 export const GET: RequestHandler = async ({ url }) => {
 	let rel: string;

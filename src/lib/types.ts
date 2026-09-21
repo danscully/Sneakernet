@@ -6,12 +6,12 @@ export type ErrorPolicy = 'stop' | 'ignore' | 'ask';
 
 export type ConfirmDecision = 'stop' | 'skip' | 'ignore-all' | 'copy-anyway';
 
-/** A single destination directory (all paths are relative to the configured root). */
+/** A single destination directory. */
 export interface DestinationConfig {
 	/** Stable unique id within the sync set. */
 	id: string;
 	name: string;
-	/** Relative path under the sync root, e.g. "backups/photos". */
+	/** Absolute path of the destination directory, e.g. "/Volumes/Backup/photos". */
 	path: string;
 	/** Parallel group 1..10. Groups run in numerical order. */
 	group: number;
@@ -20,7 +20,7 @@ export interface DestinationConfig {
 export interface SyncSet {
 	id: string;
 	name: string;
-	/** Relative path under the sync root. */
+	/** Absolute path of the source directory. */
 	source: string;
 	destinations: DestinationConfig[];
 	/** Timestamps differing by at most this many seconds are considered equal. */

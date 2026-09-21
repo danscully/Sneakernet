@@ -5,23 +5,22 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { ComparePlan, DestDecision, PlanItem, SyncSet } from '$lib/types';
-import { sanitizeRelPath } from './paths';
 import { buildFilters } from './filters';
 import { isEngineFile, walkTree, type WalkMap } from './walker';
 
 /**
  * Compare a sync set's source against all of its destinations.
- * Paths in the sync set must already be sanitized.
+ * Source and destination paths in the sync set are absolute; the plan
+ * records them unchanged (relative file paths are relative to them).
  */
 export async function compareSet(set: SyncSet): Promise<ComparePlan> {
-	const sourceRel = sanitizeRelPath(set.source);
 	const filters = buildFilters(set.includeFilters, set.excludeFilters);
 	const deltaMs = Math.max(0, set.dateDeltaSeconds) * 1000;
 
 	// The source tree is walked once; every destination walks its own tree.
-	const source = await walkTree(sourceRel, filters);
+	const source = await walkTree(set.source, filters);
 	const destWalks: WalkMap[] = await Promise.all(
-		set.destinations.map((d) => walkTree(sanitizeRelPath(d.path), filters))
+		set.destinations.map((d) => walkTree(d.path, filters))
 	);
 
 	const items = new Map<string, PlanItem>();
@@ -102,7 +101,7 @@ export async function compareSet(set: SyncSet): Promise<ComparePlan> {
 		setId: set.id,
 		setName: set.name,
 		createdAt: Date.now(),
-		source: sourceRel,
+		source: set.source,
 		dateDeltaSeconds: set.dateDeltaSeconds,
 		syncDeletions: set.syncDeletions,
 		destinations: set.destinations,

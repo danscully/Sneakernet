@@ -1,3 +1,9 @@
+<!--
+	RETAINED BUT CURRENTLY UNUSED. This root-relative directory picker (with
+	its /api/tree backend) was replaced by the OS-native Tauri directory
+	chooser when the root-directory concept was removed. It is kept intact so
+	the change can be rolled back, or the picker reused, later.
+-->
 <script lang="ts">
 	import { Folder, ChevronRight, Home, FolderPlus } from '@lucide/svelte';
 	import * as Dialog from '$lib/components/ui/dialog';

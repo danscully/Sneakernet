@@ -114,7 +114,7 @@
 	</div>
 
 	<div class="text-[10px] text-muted-foreground">
-		<span class="block truncate" title={dest.path}>{dest.path || '(root)'}</span>
+		<span class="block truncate" title={dest.path}>{dest.path}</span>
 	</div>
 
 	<!-- Leading-ellipsis truncation happens in the effect above -->

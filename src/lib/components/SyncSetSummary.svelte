@@ -71,20 +71,12 @@
 			<Badge variant="secondary" class="w-fit text-[9px]">unsaved changes</Badge>
 		{/if}
 
-		<!-- Root -->
-		<div class="grid gap-1">
-			<span class="text-muted-foreground">Root directory</span>
-			<code class="block truncate rounded-md border bg-muted/40 px-2 py-1 text-[10px]" title={app.rootPath ?? ''}>
-				{app.rootPath ?? '…'}
-			</code>
-		</div>
-
-		<!-- Source -->
+		<!-- Source (absolute path) -->
 		<div class="grid gap-1">
 			<span class="text-muted-foreground">Source</span>
-			<span class="flex items-center gap-1.5">
+			<span class="flex min-w-0 items-center gap-1.5">
 				<FolderOpen class="size-3.5 shrink-0 text-muted-foreground" />
-				<code class="truncate" title={set.source}>{set.source || '(root)'}</code>
+				<code class="truncate" title={set.source}>{set.source}</code>
 			</span>
 		</div>
 
@@ -109,7 +101,7 @@
 							</span>
 						</div>
 						<div class="mt-0.5 truncate text-[10px] text-muted-foreground" title={dest.path}>
-							{dest.path || '(root)'}
+							{dest.path}
 						</div>
 					</div>
 				{/each}

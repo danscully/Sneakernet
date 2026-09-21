@@ -7,10 +7,15 @@ import type { RequestHandler } from './$types';
 import { desktopMode, isDesktopHost } from '$lib/server/desktop';
 
 /**
- * Absolute-path directory listing for the root-directory picker in the
- * desktop settings dialog. Unlike /api/tree (which is sandboxed to the sync
- * root), this walks the real filesystem - so it is strictly loopback-only,
- * desktop mode only. Remote users can never enumerate the machine's disks.
+ * Absolute-path directory listing (for the in-app filesystem browser that
+ * used to back the root-directory picker in the desktop settings dialog).
+ *
+ * NOTE: currently unused by the UI — the native Tauri directory chooser
+ * replaced this browser when the root-directory concept was removed.
+ * Retained for rollback/reuse. Unlike /api/tree (which is sandboxed to
+ * the sync root), this walks the real filesystem - so it stays strictly
+ * loopback-only, desktop mode only. Remote users can never enumerate the
+ * machine's disks.
  */
 
 /** A drive/volume that can be jumped to directly (Windows only). */

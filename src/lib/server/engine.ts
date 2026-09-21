@@ -24,7 +24,6 @@ import type {
 	SyncEvent,
 	SyncSet
 } from '$lib/types';
-import { absPath } from './paths';
 import { compareSet } from './compare';
 import { LOCK_FILE } from './walker';
 import { RunLogger, cleanupOldLogs } from './logger';
@@ -46,7 +45,8 @@ interface DestTasks {
 interface DestRun {
 	destId: string;
 	destName: string;
-	destRel: string;
+	/** Absolute path of the destination root. */
+	destPath: string;
 	group: number;
 	tasks: DestTasks;
 	progress: DestProgress;
@@ -185,7 +185,7 @@ class RunState {
 			this.dests.push({
 				destId: dest.id,
 				destName: dest.name,
-				destRel: dest.path,
+				destPath: dest.path,
 				group: dest.group,
 				tasks,
 				progress: {
@@ -216,7 +216,7 @@ class RunState {
 			dests: this.dests.map((d) => ({
 				id: d.destId,
 				name: d.destName,
-				path: d.destRel,
+				path: d.destPath,
 				group: d.group
 			}))
 		});
@@ -242,8 +242,8 @@ class RunState {
 			return;
 		}
 
-		const destRootAbs = absPath(d.destRel);
-		const srcRootAbs = absPath(this.plan.source);
+		const destRootAbs = d.destPath;
+		const srcRootAbs = this.plan.source;
 
 		// Semaphore: acquire this destination's lock file (only one active sync
 		// may target a given destination directory).
@@ -390,7 +390,7 @@ class RunState {
 	//
 
 	private async acquireLock(d: DestRun): Promise<boolean> {
-		const lockPath = path.join(absPath(d.destRel), LOCK_FILE);
+		const lockPath = path.join(d.destPath, LOCK_FILE);
 		while (!d.stopped) {
 			let mtime: number | null = null;
 			try {
@@ -447,7 +447,7 @@ class RunState {
 
 		// The destination root may not exist yet - create it so the lock file
 		// has a place to live (missing roots are normal for fresh destinations).
-		makeDirs(absPath(d.destRel));
+		makeDirs(d.destPath);
 
 		// Write our lock and keep it fresh while this destination syncs.
 		const info = {
@@ -537,7 +537,7 @@ class RunState {
 		relPath: string,
 		item: { size: number; mtime: number }
 	): Promise<'ok' | 'skip' | 'stop'> {
-		const srcAbs = path.join(absPath(this.plan.source), relPath);
+		const srcAbs = path.join(this.plan.source, relPath);
 		let stat;
 		try {
 			stat = await fs.stat(srcAbs);

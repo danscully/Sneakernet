@@ -7,6 +7,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ComparePlan, SyncEvent, SyncSet } from '../src/lib/types';
 import { absPath } from '../src/lib/server/paths';
+import { ROOT } from '../src/lib/server/config';
 import { syncManager, type Selection } from '../src/lib/server/engine';
 
 export async function mkdirp(rel: string): Promise<void> {
@@ -45,8 +46,19 @@ export async function rmrf(rel: string): Promise<void> {
 	await fs.rm(absPath(rel), { recursive: true, force: true });
 }
 
-export function makeSet(overrides: Partial<SyncSet> = {}): SyncSet {
+/** Absolutize the source and destination paths of a set (root-relative test
+ * strings become real absolute paths, as the app now stores them). */
+export function absSet(set: SyncSet): SyncSet {
+	const abs = (p: string): string => (path.isAbsolute(p) ? p : path.join(ROOT, p));
 	return {
+		...set,
+		source: abs(set.source),
+		destinations: set.destinations.map((d) => ({ ...d, path: abs(d.path) }))
+	};
+}
+
+export function makeSet(overrides: Partial<SyncSet> = {}): SyncSet {
+	return absSet({
 		id: randomUUID(),
 		name: 'Test Set',
 		source: 'src',
@@ -57,7 +69,7 @@ export function makeSet(overrides: Partial<SyncSet> = {}): SyncSet {
 		excludeFilters: [],
 		errorPolicy: 'ask',
 		...overrides
-	};
+	});
 }
 
 /** Select every actionable item (copies + deletes) for the given destinations. */

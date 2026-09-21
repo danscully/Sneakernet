@@ -20,7 +20,8 @@ export interface DesktopSettings {
 	lanPort: number;
 	/** Secret token embedded in the shared access link. */
 	accessToken: string;
-	/** Absolute path of the sync root; null = the shell's default. */
+	/** LEGACY sync root (the root-directory concept was removed). The
+	 * shell still writes/reads this field; the app ignores it. */
 	rootDirectory: string | null;
 }
 

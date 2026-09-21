@@ -3,7 +3,6 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { absPath } from './paths';
 import type { FilterState } from './filters';
 
 export interface WalkEntry {
@@ -25,18 +24,19 @@ export function isEngineFile(relPath: string): boolean {
 }
 
 /**
- * Walk a directory tree under the root and return a map of relative path ->
- * entry. Paths are filtered through the sync set's filters. Directories are
+ * Walk a directory tree rooted at `absRoot` (an absolute path) and return a
+ * map of relative path -> entry. Paths are filtered through the sync set's
+ * filters. Directories are
  * only pruned when they (or an ancestor) match an exclusion - include filters
  * such as "*.txt" never prune a directory, because deeper paths may still
  * match. Symlinks are followed and treated as their targets.
  */
-export async function walkTree(relRoot: string, filters: FilterState): Promise<WalkMap> {
+export async function walkTree(absRoot: string, filters: FilterState): Promise<WalkMap> {
 	const out: WalkMap = new Map();
-	const absRoot = absPath(relRoot);
+	const root = path.resolve(absRoot);
 	try {
-		const rootStat = await fs.stat(absRoot);
-		if (!rootStat.isDirectory()) throw new Error(`not a directory: ${relRoot || '<root>'}`);
+		const rootStat = await fs.stat(root);
+		if (!rootStat.isDirectory()) throw new Error(`not a directory: ${absRoot}`);
 	} catch (e) {
 		if (e instanceof Error && e.message.startsWith('not a directory')) throw e;
 		return out; // missing source/destination -> empty map
@@ -68,6 +68,6 @@ export async function walkTree(relRoot: string, filters: FilterState): Promise<W
 		}
 	}
 
-	await walk(absRoot, '');
+	await walk(root, '');
 	return out;
 }
