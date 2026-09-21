@@ -251,6 +251,22 @@ trust. macOS will ask once to allow incoming connections for the bundled
 Node runtime; on Windows allow Sneakernet through Windows Firewall when
 prompted.
 
+
+### Type-checking Windows code from macOS
+
+The shell has Windows-only code paths (cfg'd out on macOS, so `cargo check`
+cannot see them). From macOS, run:
+
+```sh
+npm run desktop:check-windows
+```
+
+to type-check the `x86_64-pc-windows-msvc` target locally (requires
+`rustup target add x86_64-pc-windows-msvc` and `brew install llvm` for
+`llvm-rc`; no linking is performed). Run it before pushing Windows-touching
+shell changes - it catches cfg(windows) compile errors that would otherwise
+only surface in CI.
+
 ### Making a release (macOS + Windows)
 
 Releases are built by CI — no local Windows machine needed. The workflow

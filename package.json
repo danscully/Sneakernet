@@ -14,6 +14,7 @@
 		"test:watch": "vitest",
 		"seed": "node scripts/seed.mjs",
 		"desktop:prepare": "node scripts/prepare-desktop.mjs",
+		"desktop:check-windows": "cd desktop/src-tauri && PATH=\"$HOME/.cargo/bin:/opt/homebrew/opt/llvm/bin:$PATH\" cargo check --target x86_64-pc-windows-msvc",
 		"desktop:build": "npm run build && npm run desktop:prepare && npx tauri build --config desktop/src-tauri/tauri.conf.json",
 		"desktop:build:win": "npm run build && node scripts/prepare-desktop.mjs --platform win32 --arch x64 && npx tauri build --config desktop/src-tauri/tauri.conf.json --target x86_64-pc-windows-msvc || npx tauri build --config desktop/src-tauri/tauri.conf.json"
 	},

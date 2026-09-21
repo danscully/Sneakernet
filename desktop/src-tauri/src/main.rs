@@ -37,10 +37,14 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder},
+    menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     AppHandle, Manager, RunEvent,
 };
+// The macOS app menu (built in the cfg'd block below) is the only user of
+// these; importing them unconditionally warns on the Windows target.
+#[cfg(target_os = "macos")]
+use tauri::menu::{MenuBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 // ---------------------------------------------------------------- logging --
@@ -485,7 +489,7 @@ fn main() {
             {
                 if let Some(window) = handle.get_webview_window("main") {
                     let _ = window
-                        .set_background_color(Some(tauri::utils::Color(
+                        .set_background_color(Some(tauri::utils::config::Color(
                             0x0a,
                             0x0a,
                             0x0b,
