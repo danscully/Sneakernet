@@ -89,7 +89,9 @@
 			</Dialog.Description>
 		</Dialog.Header>
 
-		<div class="flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-xs">
+		<!-- min-w-0 + flex-wrap: deep paths wrap their crumbs to the next line
+			instead of stretching the dialog grid track wider than the modal -->
+		<div class="flex min-w-0 flex-wrap items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-xs">
 			<Button variant="ghost" size="sm" class="h-6 px-2" onclick={() => void load('')}>
 				<Home class="size-3.5" />
 				root
@@ -105,9 +107,9 @@
 			{/if}
 		</div>
 
-		<div class="flex items-center gap-1.5">
+		<div class="flex min-w-0 items-center gap-1.5">
 			<Input
-				class="h-7 flex-1 text-xs"
+				class="h-7 min-w-0 flex-1 text-xs"
 				placeholder="new subdirectory name"
 				bind:value={newFolderName}
 				onkeydown={(e) => {
@@ -153,7 +155,7 @@
 			{/if}
 		</ScrollArea>
 
-		<Dialog.Footer class="gap-2">
+		<Dialog.Footer class="min-w-0 gap-2">
 			<Button
 				variant="outline"
 				size="sm"
@@ -164,12 +166,15 @@
 			</Button>
 			<Button
 				size="sm"
+				class="min-w-0"
 				onclick={() => {
 					onPick(path);
 					open = false;
 				}}
+				title={path === '' ? '(root)' : path}
 			>
-				Choose {path === '' ? '(root)' : path}
+				<!-- deep paths truncate instead of pushing past the modal -->
+				<span class="min-w-0 truncate">Choose {path === '' ? '(root)' : path}</span>
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

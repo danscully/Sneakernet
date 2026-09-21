@@ -350,7 +350,7 @@
 
 <!-- Sync set settings modal -->
 <Dialog.Root bind:open={app.settingsOpen}>
-	<Dialog.Content class="flex max-h-[90vh] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
+	<Dialog.Content class="flex max-h-[90vh] max-w-6xl flex-col gap-0 overflow-hidden p-0">
 		<Dialog.Header class="shrink-0 border-b p-4 pb-3">
 			<Dialog.Title>
 				Sync Set Settings{#if app.draft} — {app.draft.name}{/if}
