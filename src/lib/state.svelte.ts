@@ -715,7 +715,9 @@ export class AppState {
 		if (progress.status === 'queued' || progress.status === 'stopped') view.startedAt = null;
 		if (progress.copiedBytes !== undefined) {
 			view.samples.push({ ts, bytes: progress.copiedBytes });
-			const cutoff = ts - 8000;
+			// Keep a generous window (30s): short stalls (a big single file,
+			// a slow lock wait) must not zero out the rolling transfer rate.
+			const cutoff = ts - 30_000;
 			while (view.samples.length > 2 && view.samples[0]!.ts < cutoff) view.samples.shift();
 		}
 		if (['done', 'stopped', 'stopped-error', 'aborted'].includes(progress.status)) {

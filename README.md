@@ -142,7 +142,11 @@ Example `config.json`:
    **Clear completed** (which never touches running syncs and updates every
    connected user's view).
 6. Every run is logged — the **Logs** tab shows the current session's runs
-   (newest first) or all recent runs, with the full text of each log.
+   (newest first) or all recent runs, with the full text of each log. Log
+   lines are tab-delimited (`timestamp \t destination \t action \t path \t
+   statistics`) with destination names, and status lines only appear when a
+   destination's status actually changes — so logs paste cleanly into a
+   spreadsheet.
 
 ## Desktop app (Tauri) — distribution
 

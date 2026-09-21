@@ -34,7 +34,7 @@ describe('sync logs', () => {
 		let content = '';
 		for (let i = 0; i < 100; i++) {
 			content = await fs.readFile(file, 'utf8').catch(() => '');
-			if (content.includes('sync run finished')) break;
+			if (content.includes('\trun finished\t')) break;
 			await new Promise((r) => setTimeout(r, 50));
 		}
 		const lines = content.split('\n').filter(Boolean);
@@ -48,11 +48,22 @@ describe('sync logs', () => {
 		const tail = JSON.parse(lines.at(-1)!) as { finishedAt: number | null };
 		expect(tail.finishedAt).not.toBeNull();
 
-		// Event lines in between.
-		expect(content).toContain('sync run started');
-		expect(content).toContain('copy a.txt');
-		expect(content).toContain('done a.txt');
-		expect(content).toContain('sync run finished');
+
+		// Event lines in between: tab-delimited columns
+		// <timestamp>\t<destination>\t<action>\t<path>\t<statistics>.
+		expect(content).toContain('\trun started\t\tset "Log Test Set"');
+		// The destination column shows the configured NAME, not the id.
+		expect(content).toContain('\tD1\tcopy\ta.txt\t');
+		expect(content).toContain('\tD1\tcopied\ta.txt\t');
+		expect(content).toContain('\trun finished\t\t');
+		// Status lines appear only when the status changes: exactly one
+		// 'running' and one 'done' per destination despite the engine
+		// re-reporting 'running' after every file.
+		expect(content.match(/\tD1\tstatus\t\trunning\n/g)?.length).toBe(1);
+		expect(content.match(/\tD1\tstatus\t\tdone\n/g)?.length).toBe(1);
+		// No un-deduped repeats, and destination ids never appear bare.
+		expect(content).not.toContain('\tdest d1\t');
+		expect(content).not.toContain('\td1\t');
 	});
 
 	it('appends engine log lines (e.g. stale lock messages)', async () => {

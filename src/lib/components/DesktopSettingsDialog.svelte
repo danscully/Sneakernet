@@ -96,7 +96,31 @@
 		}
 	}
 
-	function openPicker(): void {
+	/**
+	 * Try the OS-native directory chooser first (the webview's Tauri IPC
+	 * is loopback-scoped via the capability file). Returns true if the
+	 * native dialog was shown (chosen path applied or cancelled by the
+	 * user); false when the IPC/plugin is unavailable, in which case the
+	 * caller falls back to the in-app HTML picker.
+	 */
+	async function tryNativePicker(): Promise<boolean> {
+		if (!app.desktopHost) return false;
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const picked = await open({
+				directory: true,
+				title: 'Choose the Sneakernet sync root'
+			});
+			if (typeof picked === 'string') rootDirectory = picked;
+			return true; // also covers cancel: the user made their choice
+		} catch {
+			return false; // no Tauri IPC (or plugin blocked) -> HTML picker
+		}
+	}
+
+	async function browseRoot(): Promise<void> {
+		if (await tryNativePicker()) return;
+		// Fallback: the in-app directory browser.
 		step = 'picker';
 		void loadPicker(rootDirectory ?? root);
 	}
@@ -173,7 +197,7 @@
 								variant="outline"
 								size="sm"
 								class="h-7"
-								onclick={openPicker}
+								onclick={() => void browseRoot()}
 								title="Browse for a different root directory"
 							>
 								<Folder class="size-3.5" /> Browse
@@ -274,7 +298,7 @@
 						{/each}
 					</div>
 				{/if}
-				<ScrollArea type="always" class="h-64 rounded-md border p-1">
+				<ScrollArea type="always" class="h-64 min-w-0 rounded-md border p-1">
 					{#if pickerLoading}
 						<div class="p-4 text-xs text-muted-foreground">Loading…</div>
 					{:else if pickerDirs.length === 0}
@@ -283,12 +307,14 @@
 						{#each pickerDirs as dir (dir.path)}
 							<button
 								type="button"
-								class="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-xs hover:bg-accent"
+								class="flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1 text-left text-xs hover:bg-accent"
 								onclick={() => void loadPicker(dir.path)}
 								title={dir.path}
 							>
 								<Folder class="size-3.5 shrink-0 text-muted-foreground" />
-								<span class="truncate">{dir.name}</span>
+								<!-- min-w-0 lets long folder names shrink instead of pushing
+									the picker wider than the modal -->
+								<span class="min-w-0 truncate">{dir.name}</span>
 							</button>
 						{/each}
 					{/if}

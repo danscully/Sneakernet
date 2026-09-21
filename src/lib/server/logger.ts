@@ -2,9 +2,15 @@
  * Per-run sync log files.
  *
  * Every sync run writes a log file to LOG_DIR/run-<runId>.log. The first line
- * is a JSON metadata record; the rest are timestamped text lines derived from
- * the engine's events. Old logs are pruned based on the configured retention
- * (SNEAKERNET_LOG_RETENTION_DAYS / config.json logRetentionDays, default 7).
+ * is a JSON metadata record; the rest are TAB-DELIMITED text lines derived
+ * from the engine's events:
+ *
+ *   <timestamp>\t<destination>\t<action>\t<path>\t<statistics>
+ *
+ * so they can be pasted straight into a spreadsheet. Status lines only appear
+ * when a destination's status (or message) actually changes. Old logs are
+ * pruned based on the configured retention (SNEAKERNET_LOG_RETENTION_DAYS /
+ * config.json logRetentionDays, default 7).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -31,6 +37,26 @@ function stamp(ts: number): string {
 	return `${TIME_FMT.format(d)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
 }
 
+/** Human-readable byte size for the statistics column. */
+function fmtSize(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	const units = ['KB', 'MB', 'GB', 'TB'];
+	let value = bytes / 1024;
+	let unit = 0;
+	while (value >= 1024 && unit < units.length - 1) {
+		value /= 1024;
+		unit += 1;
+	}
+	return `${value.toFixed(2)} ${units[unit]}`;
+}
+
+/** Format a duration in seconds for the statistics column. */
+function fmtDuration(ms: number): string {
+	const s = Math.floor(ms / 1000);
+	if (s < 60) return `${s}s`;
+	return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+}
+
 export function logFilePath(runId: string): string {
 	// runId is a server-generated UUID; keep only safe characters.
 	const safe = runId.replace(/[^a-zA-Z0-9-]/g, '');
@@ -47,6 +73,10 @@ export class RunLogger {
 	#lastFlush = 0;
 	#writePromise: Promise<void> = Promise.resolve();
 	#finalMetaWritten = false;
+	/** destId -> human name (learned from the run-start event). */
+	#destNames = new Map<string, string>();
+	/** destId -> last logged `${status}|${message}` (status lines are deduped). */
+	#lastStatus = new Map<string, string>();
 
 	constructor(runId: string, setId: string, setName: string) {
 		this.#meta = { runId, setId, setName, startedAt: Date.now(), finishedAt: null };
@@ -55,50 +85,77 @@ export class RunLogger {
 	}
 
 	handleEvent(e: SyncEvent): void {
-		const when = `[${stamp(e.ts)}]`;
+		// Tab-delimited row: timestamp \t destination \t action \t path \t statistics.
+		const row = (dest: string | undefined, action: string, path: string, stats: string) =>
+			`${stamp(e.ts)}\t${(dest && this.#destNames.get(dest)) || dest || ''}\t${action}\t${path}\t${stats}`;
+
 		let line: string | null = null;
-		const dest = e.destId ? ` dest ${e.destId}` : '';
 		switch (e.type) {
 			case 'run-start':
-				line = `${when} sync run started (set "${this.#meta.setName}")`;
+				// The event carries the destination info (id -> name).
+				for (const d of e.dests ?? []) this.#destNames.set(d.id, d.name);
+				line = row(undefined, 'run started', '', `set "${this.#meta.setName}"`);
 				break;
-			case 'dest-status':
-				if (e.progress) {
-					line = `${when} dest ${e.destId}: status ${e.progress.status}${e.progress.message ? ` - ${e.progress.message}` : ''}`;
-				}
+			case 'dest-status': {
+				if (!e.progress || !e.destId) break;
+				// Only log a status line when the status (or its message)
+				// changed - the engine re-reports 'running' after every file.
+				const key = `${e.progress.status}|${e.progress.message ?? ''}`;
+				if (this.#lastStatus.get(e.destId) === key) break;
+				this.#lastStatus.set(e.destId, key);
+				const stats = e.progress.message
+					? `${e.progress.status} - ${e.progress.message}`
+					: e.progress.status;
+				line = row(e.destId, 'status', '', stats);
 				break;
+			}
 			case 'file-start':
-				line = `${when} dest ${e.destId}: copy ${e.relPath} (${e.progress?.currentFileSize ?? 0} B)`;
+				line = row(e.destId, 'copy', e.relPath ?? '', fmtSize(e.progress?.currentFileSize ?? 0));
 				break;
 			case 'file-progress':
-				return; // too chatty; start/done lines carry the info
+				break; // too chatty; start/done lines carry the info
 			case 'file-done':
-				line = `${when} dest ${e.destId}: done ${e.relPath} (${e.copiedBytes ?? 0}/${e.totalBytes ?? 0} B, ${e.filesDone ?? 0}/${e.filesTotal ?? 0} files)`;
+				line = row(
+					e.destId,
+					'copied',
+					e.relPath ?? '',
+					`${fmtSize(e.copiedBytes ?? 0)}/${fmtSize(e.totalBytes ?? 0)}; ${e.filesDone ?? 0}/${e.filesTotal ?? 0} files`
+				);
 				break;
 			case 'file-skipped':
-				line = `${when} dest ${e.destId}: skipped ${e.relPath}${e.message ? ` (${e.message})` : ''}`;
+				line = row(e.destId, 'skipped', e.relPath ?? '', e.message ?? '');
 				break;
 			case 'file-deleted':
-				line = `${when} dest ${e.destId}: deleted ${e.relPath}`;
+				line = row(e.destId, 'deleted', e.relPath ?? '', '');
 				break;
 			case 'dir-created':
-				line = `${when} dest ${e.destId}: created dir ${e.relPath}`;
+				line = row(e.destId, 'created dir', e.relPath ?? '', '');
 				break;
 			case 'confirm':
-				line = `${when} dest ${e.destId}: PAUSED - ${e.confirm?.kind}: ${e.confirm?.message}`;
+				line = row(
+					e.destId,
+					'paused',
+					e.relPath ?? '',
+					`${e.confirm?.kind ?? 'error'}: ${e.confirm?.message ?? ''}`
+				);
 				break;
 			case 'confirm-resolved':
-				line = `${when}${dest}: user answered the prompt, sync continues`;
+				line = row(e.destId, 'resumed', '', 'prompt answered');
 				break;
 			case 'log':
-				line = `${when}${dest}: ${e.message ?? ''}`;
+				line = row(e.destId, 'log', '', e.message ?? '');
 				break;
 			case 'dest-done':
-				line = `${when} dest ${e.destId}: finished (${e.filesDone ?? 0}/${e.filesTotal ?? 0} files, ${e.copiedBytes ?? 0} B copied${e.error ? `, error: ${e.error}` : ''})`;
+				line = row(
+					e.destId,
+					'finished',
+					'',
+					`${e.filesDone ?? 0}/${e.filesTotal ?? 0} files; ${fmtSize(e.copiedBytes ?? 0)} copied${e.error ? `; error: ${e.error}` : ''}`
+				);
 				break;
 			case 'run-done':
 				this.#meta.finishedAt = e.ts;
-				line = `${when} sync run finished`;
+				line = row(undefined, 'run finished', '', fmtDuration(e.ts - this.#meta.startedAt));
 				break;
 			default:
 				break;

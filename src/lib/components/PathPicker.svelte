@@ -130,7 +130,7 @@
 			<p class="text-[11px] text-destructive">{createError}</p>
 		{/if}
 
-		<ScrollArea class="h-64 rounded-md border p-1">
+		<ScrollArea class="h-64 min-w-0 rounded-md border p-1">
 			{#if loading}
 				<div class="p-4 text-xs text-muted-foreground">Loading…</div>
 			{:else if dirs.length === 0}
@@ -140,14 +140,14 @@
 					<button
 						type="button"
 						class={cn(
-							'flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-xs hover:bg-accent',
+							'flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1 text-left text-xs hover:bg-accent',
 							selected === dir.rel && 'bg-accent'
 						)}
 						onclick={() => (selected = dir.rel)}
 						ondblclick={() => void load(dir.rel)}
 					>
-						<Folder class="size-3.5 text-muted-foreground" />
-						{dir.name}
+						<Folder class="size-3.5 shrink-0 text-muted-foreground" />
+						<span class="min-w-0 truncate">{dir.name}</span>
 					</button>
 				{/each}
 			{/if}

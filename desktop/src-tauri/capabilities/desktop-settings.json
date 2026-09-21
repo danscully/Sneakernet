@@ -1,0 +1,11 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "desktop-settings",
+	"description": "Lets the embedded web app (served from the app's own loopback server, hence the remote URL entry) open native OS directory pickers via the dialog plugin. The main window only ever loads the app's own pages; LAN users interact through ordinary browsers, which have no Tauri IPC.",
+	"windows": ["main"],
+	"local": true,
+	"remote": {
+		"urls": ["http://127.0.0.1"]
+	},
+	"permissions": ["dialog:default"]
+}
