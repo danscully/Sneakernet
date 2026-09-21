@@ -71,12 +71,12 @@
 			<Badge variant="secondary" class="w-fit text-[9px]">unsaved changes</Badge>
 		{/if}
 
-		<!-- Source (absolute path) -->
+		<!-- Source (absolute path) - wraps rather than truncating -->
 		<div class="grid gap-1">
 			<span class="text-muted-foreground">Source</span>
-			<span class="flex min-w-0 items-center gap-1.5">
+			<span class="flex min-w-0 items-start gap-1.5">
 				<FolderOpen class="size-3.5 shrink-0 text-muted-foreground" />
-				<code class="truncate" title={set.source}>{set.source}</code>
+				<code class="break-all" title={set.source}>{set.source}</code>
 			</span>
 		</div>
 
@@ -100,7 +100,7 @@
 										: `${formatBytes(freeSpace[dest.id]!)} free`}
 							</span>
 						</div>
-						<div class="mt-0.5 truncate text-[10px] text-muted-foreground" title={dest.path}>
+						<div class="mt-0.5 break-all text-[10px] text-muted-foreground" title={dest.path}>
 							{dest.path}
 						</div>
 					</div>
@@ -117,9 +117,9 @@
 				<span class="text-muted-foreground">Datestamp delta</span>
 				<span class="tabular-nums">{set.dateDeltaSeconds}s</span>
 				<span class="text-muted-foreground">Sync deletions</span>
-				<span>{set.syncDeletions ? 'yes' : 'no'}</span>
+				<span>{set.syncDeletions ? 'Yes' : 'No'}</span>
 				<span class="text-muted-foreground">Error handling</span>
-				<span>{set.errorPolicy === 'stop' ? 'stop on error' : set.errorPolicy === 'ignore' ? 'ignore all errors' : 'ask user'}</span>
+				<span>{set.errorPolicy === 'stop' ? 'Stop on error' : set.errorPolicy === 'ignore' ? 'Ignore all errors' : 'Ask user'}</span>
 			</div>
 		</div>
 
