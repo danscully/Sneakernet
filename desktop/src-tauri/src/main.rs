@@ -477,6 +477,23 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
 
+            // Windows only: WebView2 paints white before the loading page's
+            // first frame; make the pre-paint window match the app's dark
+            // background instead. (The alpha channel must be 0 for WebView2
+            // to apply the color; the RGB is the app background #0a0a0b.)
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = handle.get_webview_window("main") {
+                    let _ = window
+                        .set_background_color(Some(tauri::utils::Color(
+                            0x0a,
+                            0x0a,
+                            0x0b,
+                            0x00,
+                        )));
+                }
+            }
+
             let app_data = app_data_of(&handle);
             // One-time migration from the pre-rename bundle identifier
             // (com.metfilesync.desktop was this app's name until v0.1): carry

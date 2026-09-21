@@ -7,6 +7,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { app } from '$lib/state.svelte';
+	import { cn } from '$lib/utils';
 
 	/**
 	 * Desktop-app settings (LAN sharing + sync root). Mounted in the layout
@@ -17,6 +18,12 @@
 	type Step = 'settings' | 'picker';
 
 	interface BrowseDir {
+		name: string;
+		path: string;
+	}
+
+	/** A directly jumpable drive (Windows only; empty elsewhere). */
+	interface Drive {
 		name: string;
 		path: string;
 	}
@@ -38,6 +45,7 @@
 	let pickerPath = $state('');
 	let pickerParent = $state<string | null>(null);
 	let pickerDirs = $state<BrowseDir[]>([]);
+	let pickerDrives = $state<Drive[]>([]);
 	let pickerLoading = $state(false);
 	let pickerError = $state<string | null>(null);
 
@@ -70,6 +78,7 @@
 				path?: string;
 				parent?: string | null;
 				dirs?: BrowseDir[];
+				drives?: Drive[];
 				error?: string;
 			};
 			if (!res.ok) {
@@ -79,6 +88,7 @@
 			pickerPath = data.path ?? p;
 			pickerParent = data.parent ?? null;
 			pickerDirs = data.dirs ?? [];
+			pickerDrives = data.drives ?? [];
 		} catch {
 			pickerError = 'could not browse this directory';
 		} finally {
@@ -171,7 +181,7 @@
 						</div>
 						<p class="text-[10px] text-muted-foreground">
 							{#if rootDirectory !== null && rootDirectory !== orig.rootDirectory}
-								Will become <code>{rootDirectory}</code> after applying.
+								Will become <code class="break-all">{rootDirectory}</code> after applying.
 							{:else}
 								{#if rootDirectory === null}
 									Currently the app default.
@@ -244,6 +254,25 @@
 				</div>
 				{#if pickerError}
 					<p class="text-xs text-destructive">{pickerError}</p>
+				{/if}
+				<!-- Drives (Windows): "up" stops at a drive root, so volumes are
+					offered as direct jump targets. -->
+				{#if pickerDrives.length > 0}
+					<div class="flex flex-wrap items-center gap-1">
+						<span class="text-[10px] text-muted-foreground">Drives:</span>
+						{#each pickerDrives as drive (drive.path)}
+							<button
+								type="button"
+								class={cn(
+									'rounded-md border px-2 py-0.5 font-mono text-[11px] hover:bg-accent',
+									pickerPath === drive.path && 'bg-accent'
+								)}
+								onclick={() => void loadPicker(drive.path)}
+							>
+								{drive.name}
+							</button>
+						{/each}
+					</div>
 				{/if}
 				<ScrollArea type="always" class="h-64 rounded-md border p-1">
 					{#if pickerLoading}

@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,6 +12,35 @@ import { desktopMode, isDesktopHost } from '$lib/server/desktop';
  * root), this walks the real filesystem - so it is strictly loopback-only,
  * desktop mode only. Remote users can never enumerate the machine's disks.
  */
+
+/** A drive/volume that can be jumped to directly (Windows only). */
+interface Drive {
+	name: string;
+	path: string;
+}
+
+/** Drive letters exist; probing 26 letters can involve removable/network
+ * media, so the result is cached briefly. */
+let driveCache: { at: number; drives: Drive[] } | null = null;
+
+function windowsDrives(): Drive[] {
+	if (driveCache && Date.now() - driveCache.at < 30_000) return driveCache.drives;
+	const drives: Drive[] = [];
+	// Probe A: through Z: - absent letters error immediately.
+	for (let code = 65; code <= 90; code++) {
+		const letter = String.fromCharCode(code);
+		const root = `${letter}:\\`;
+		try {
+			fsSync.accessSync(root);
+			drives.push({ name: `${letter}:`, path: root });
+		} catch {
+			/* drive not present */
+		}
+	}
+	driveCache = { at: Date.now(), drives };
+	return drives;
+}
+
 export const GET: RequestHandler = async (event) => {
 	if (!desktopMode()) {
 		return json({ error: 'not running as the desktop app' }, { status: 503 });
@@ -38,9 +68,14 @@ export const GET: RequestHandler = async (event) => {
 	);
 
 	const parent = path.dirname(abs);
+	// On Windows, walking "up" from a drive root has nowhere to go - the
+	// client shows the available drives as direct jump targets instead.
+	const drives = process.platform === 'win32' ? windowsDrives() : [];
+
 	return json({
 		path: abs,
 		parent: parent === abs ? null : parent,
-		dirs
+		dirs,
+		drives
 	});
 };
